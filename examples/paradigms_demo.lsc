@@ -1,0 +1,35 @@
+player_new(name: str, hp: i64) -> i64 do
+  declare p = object_new()
+  object_set(p, "name", name)
+  object_set(p, "hp", formatOutput(hp))
+  return p
+end
+
+player_hit(p: i64, dmg: i64) -> void do
+  declare hp = parse_i64(object_get(p, "hp"))
+  hp = max(0, hp - dmg)
+  object_set(p, "hp", formatOutput(hp))
+end
+
+sum_of_squares(n: i64) -> i64 do
+  declare const limit = n
+  declare acc: i64 = 0
+  for i in 0..limit do
+    acc = acc + (i * i)
+  end
+  return acc
+end
+
+main() -> i64 do
+  declare p = player_new("Astra", 100)
+  player_hit(p, 17)
+
+  println(object_get(p, "name"))
+  println(object_get(p, "hp"))
+  println(sum_of_squares(10))
+
+  println(max(2, 7))
+  println(min(2.5, 1.5))
+  println(clamp(1.5, 0.0, 1.0))
+  return 0
+end

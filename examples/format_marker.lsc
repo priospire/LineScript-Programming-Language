@@ -1,0 +1,5 @@
+main() -> i64 do
+  .format()
+  println("clean-output")
+  return 0
+end

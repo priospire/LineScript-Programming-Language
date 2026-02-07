@@ -542,6 +542,7 @@ All top-level functions are merged into one program.
 
 Speed recommendation:
 - use `--max-speed` for release/performance runs.
+- default backend mode is `--backend auto` (x86 asm first, then C++/C fallback).
 - on Windows, eligible `--max-speed` programs can use an ultra-minimal backend path for lower runtime launch overhead.
 
 ## 13. Type Rules
@@ -567,6 +568,7 @@ Speed recommendation:
 - `input_f64()` / `input_f64(str)` return `f64`
 - `array_*` and `dict_*` use `i64` handles
 - `object_*` uses `i64` handles
+- `mem_*` APIs use raw pointer addresses encoded as `i64`
 - `gfx_*` uses `i64` canvas handles
 - `game_*` uses `i64` game handles
 - `game_mouse_x/y/norm_x/norm_y` return `f64`

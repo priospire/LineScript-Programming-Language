@@ -96,6 +96,7 @@ Arrays are runtime handles (`i64`).
 ```linescript
 array_new() -> i64
 array_len(arr: i64) -> i64
+array_free(arr: i64) -> void
 array_push(arr: i64, value: str) -> void
 array_get(arr: i64, idx: i64) -> str
 array_set(arr: i64, idx: i64, value: str) -> void
@@ -107,6 +108,7 @@ array_includes(arr: i64, value: str) -> bool
 Index behavior:
 - `array_get` out of range returns `""`.
 - `array_set` auto-grows array and fills missing slots with `""`.
+- call `array_free` when done to release array storage immediately.
 
 Example (input saved to array index):
 
@@ -126,6 +128,7 @@ Dictionaries/maps are runtime handles (`i64`) with `str -> str` entries.
 ```linescript
 dict_new() -> i64
 dict_len(d: i64) -> i64
+dict_free(d: i64) -> void
 dict_set(d: i64, key: str, value: str) -> void
 dict_get(d: i64, key: str) -> str
 dict_has(d: i64, key: str) -> bool
@@ -137,6 +140,7 @@ Map aliases:
 ```linescript
 map_new() -> i64
 map_len(m: i64) -> i64
+map_free(m: i64) -> void
 map_set(m: i64, key: str, value: str) -> void
 map_get(m: i64, key: str) -> str
 map_has(m: i64, key: str) -> bool
@@ -148,6 +152,7 @@ Object aliases (OOP-style dictionary model):
 ```linescript
 object_new() -> i64
 object_len(obj: i64) -> i64
+object_free(obj: i64) -> void
 object_set(obj: i64, key: str, value: str) -> void
 object_get(obj: i64, key: str) -> str
 object_has(obj: i64, key: str) -> bool
@@ -161,11 +166,47 @@ main() -> i64 do
   declare d = dict_new()
   dict_set(d, "name", input("name: "))
   println(dict_get(d, "name"))
+  dict_free(d)
   return 0
 end
 ```
 
-## 6. Native Graphics (2D Raster)
+## 6. Manual Memory (C-Style, No GC)
+
+Pointers are represented as `i64` addresses.
+
+```linescript
+mem_alloc(bytes: i64) -> i64
+mem_realloc(ptr: i64, bytes: i64) -> i64
+mem_free(ptr: i64) -> void
+mem_set(ptr: i64, byte: i64, bytes: i64) -> void
+mem_copy(dst: i64, src: i64, bytes: i64) -> void
+mem_read_i64(ptr: i64) -> i64
+mem_write_i64(ptr: i64, value: i64) -> void
+mem_read_f64(ptr: i64) -> f64
+mem_write_f64(ptr: i64, value: f64) -> void
+```
+
+Notes:
+- no garbage collector is used.
+- ownership is explicit: you allocate and free manually.
+- `mem_alloc`/`mem_realloc` return `0` on failure.
+
+Example:
+
+```linescript
+main() -> i64 do
+  declare p: i64 = mem_alloc(16)
+  mem_write_i64(p, 123)
+  mem_write_f64(p + 8, 2.5)
+  println(mem_read_i64(p))
+  println(mem_read_f64(p + 8))
+  mem_free(p)
+  return 0
+end
+```
+
+## 7. Native Graphics (2D Raster)
 
 Graphics are built in and require no external package.
 
@@ -204,7 +245,7 @@ main() -> i64 do
 end
 ```
 
-## 7. Native 2D Game Runtime
+## 8. Native 2D Game Runtime
 
 ```linescript
 game_new(width: i64, height: i64, title: str, visible: bool) -> i64
@@ -267,7 +308,7 @@ main() -> i64 do
 end
 ```
 
-## 8. Native Physics, Camera, and Input Polling
+## 9. Native Physics, Camera, and Input Polling
 
 ```linescript
 phys_new(x: f64, y: f64, z: f64, mass: f64, soft: bool) -> i64
@@ -321,7 +362,7 @@ main() -> i64 do
 end
 ```
 
-## 9. Numeric Conversion and Utilities
+## 10. Numeric Conversion and Utilities
 
 ```linescript
 parse_i64(s: str) -> i64
@@ -349,7 +390,7 @@ Generic numeric helper notes:
 - when all args are `i64`, result is `i64`; otherwise result is `f64`.
 - non-numeric arguments are compile-time errors.
 
-## 10. Math
+## 11. Math
 
 ```linescript
 pi() -> f64
@@ -376,7 +417,7 @@ pow(a: f64, b: f64) -> f64
 Also available in expressions:
 - power operators `**` and `^`
 
-## 11. Formatting Helpers
+## 12. Formatting Helpers
 
 ```linescript
 formatOutput(x) -> str
@@ -403,7 +444,7 @@ Behavior:
 - appends optional `str` suffix argument
 - emits final text once after block
 
-## 12. Concurrency and Parallelism
+## 13. Concurrency and Parallelism
 
 ```linescript
 spawn(worker()) -> i64
@@ -424,7 +465,7 @@ Rules:
 - `parallel for` forbids `break` and `continue`.
 - `parallel for` forbids assignments to outer-scope variables.
 
-## 13. Pygame-like API (`pg_*`)
+## 14. Pygame-like API (`pg_*`)
 
 These are convenience aliases over native `game_*` and `gfx_*` primitives.
 
@@ -479,7 +520,7 @@ main() -> i64 do
 end
 ```
 
-## 14. NumPy-like Vector API (`np_*`)
+## 15. NumPy-like Vector API (`np_*`)
 
 Numeric vectors are runtime handles (`i64`) over contiguous `f64` storage.
 

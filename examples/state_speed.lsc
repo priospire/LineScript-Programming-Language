@@ -1,0 +1,9 @@
+main() -> i64 do
+  declare acc: i64 = 0
+  for i in 0..1000000 do
+    acc = acc + i
+  end
+  println(acc)
+  .stateSpeed()
+  return 0
+end

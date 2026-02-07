@@ -1,0 +1,14 @@
+main() -> i64 do
+  declare name = input("Enter name: ")
+  declare arr = array_new()
+  array_push(arr, name)
+  array_set(arr, 1, "LineScript")
+  println(array_join(arr, " | "))
+
+  declare profile = dict_new()
+  dict_set(profile, "name", array_get(arr, 0))
+  dict_set(profile, "lang", array_get(arr, 1))
+  println(dict_get(profile, "name"))
+  println(dict_get(profile, "lang"))
+  return 0
+end

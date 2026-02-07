@@ -13,6 +13,7 @@ Fastest workflow on Windows:
 Performance note:
 - treat `--max-speed` as the standard release mode.
 - use non-`--max-speed` builds mainly for debugging.
+- backend defaults to `--backend auto` (x86 asm-first, then C++/C fallback).
 - on Windows, `--max-speed` can use an ultra-minimal backend path for eligible programs to reduce startup overhead.
 
 Behavior:

@@ -1,0 +1,11 @@
+inline sqr(x: i64) -> i64 do
+  return x * x
+end
+
+sum_sq(n: i64) -> i64 do
+  declare total: i64 = 0
+  for i in 0..n do
+    total = total + sqr(i)
+  end
+  return total
+end

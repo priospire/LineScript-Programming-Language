@@ -1,0 +1,29 @@
+inline max(a: i64, b: i64) -> i64 do
+  if a > b do
+    return a
+  else do
+    return b
+  end
+end
+
+fib(n: i64) -> i64 do
+  if n < 2 do
+    return n
+  end
+
+  declare a: i64 = 0
+  declare b: i64 = 1
+
+  for i in 2..(n + 1) do
+    declare const next = a + b
+    a = b
+    b = next
+  end
+
+  return max(b, 0)
+end
+
+main() -> i64 do
+  println(fib(45))
+  return 0
+end

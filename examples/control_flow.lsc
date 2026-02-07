@@ -1,0 +1,19 @@
+odd_sum(n: i64) -> i64 do
+  declare sum: i64 = 0
+  for i in 0..n step 1 do
+    if i % 2 == 0 do
+      continue
+    end
+    sum = sum + i
+    if sum > 100000 do
+      break
+    end
+  end
+  return sum
+end
+
+main() -> i64 do
+  declare x = odd_sum(10000000)
+  println(x)
+  return 0
+end

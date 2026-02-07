@@ -297,6 +297,7 @@ Options:
 - `--build` compile to native binary
 - `--run` build and execute binary
 - `--cc <name>` select backend C compiler command
+- `--backend <x>` select backend mode: `auto` (asm-first), `c`, `asm`
 - `--passes <n>` greedy optimizer passes
 - `--max-speed` strongest speed profile (recommended default for release/perf)
 - `--keep-c` keep generated C output
@@ -305,6 +306,7 @@ Options:
 ## Speed Features
 
 - AOT pipeline: LineScript -> optimized C -> native binary
+- x86 backend mode (`--backend asm`) with automatic C++ then C fallback
 - no mandatory VM and no GC runtime
 - greedy multi-pass optimizer (constant folding, DCE, branch/loop simplification, inlining)
 - constant small-trip loop unrolling in optimizer
@@ -331,8 +333,9 @@ Built-in helpers include:
 - typed numeric input: `input_i64`, `input_f64`
 - text transforms: `lower`, `upper`, `trim`, `replace`, `substring`, `repeat`, `reverse`
 - bytewise: `byte_at`, `ord`, `chr`
-- collections: `array_new`, `array_len`, `array_push`, `array_get`, `array_set`, `array_pop`, `array_join`, `array_includes`
-- maps/dicts: `dict_new`, `dict_len`, `dict_set`, `dict_get`, `dict_has`, `dict_remove`, plus `map_*` aliases
+- manual memory (no GC): `mem_alloc`, `mem_realloc`, `mem_free`, `mem_set`, `mem_copy`, `mem_read_i64`, `mem_write_i64`, `mem_read_f64`, `mem_write_f64`
+- collections: `array_new`, `array_len`, `array_free`, `array_push`, `array_get`, `array_set`, `array_pop`, `array_join`, `array_includes`
+- maps/dicts: `dict_new`, `dict_len`, `dict_free`, `dict_set`, `dict_get`, `dict_has`, `dict_remove`, plus `map_*`/`object_*` aliases including `map_free` and `object_free`
 - graphics: `gfx_new`, `gfx_free`, `gfx_width`, `gfx_height`, `gfx_clear`, `gfx_set`, `gfx_get`, `gfx_line`, `gfx_rect`, `gfx_save_ppm`
 - game runtime: `game_new`, `game_free`, `game_width`, `game_height`, `game_set_target_fps`, `game_set_fixed_dt`, `game_should_close`, `game_begin`, `game_poll`, `game_present`, `game_end`, `game_delta`, `game_frame`, `game_clear`, `game_set`, `game_get`, `game_line`, `game_rect`, `game_draw_gfx`, `game_save_ppm`, `game_checksum`
 - pygame-like aliases: `pg_init`, `pg_quit`, `pg_should_quit`, `pg_begin`, `pg_end`, `pg_set_target_fps`, `pg_set_fixed_dt`, `pg_clear`, `pg_draw_pixel`, `pg_draw_line`, `pg_draw_rect`, `pg_blit`, `pg_get_pixel`, `pg_save_ppm`, `pg_checksum`, `pg_mouse_x/y/norm_x/norm_y`, `pg_delta`, `pg_frame`, `pg_key_down`, `pg_key_down_name`, `pg_surface_*`

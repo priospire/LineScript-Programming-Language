@@ -1,0 +1,4 @@
+main() -> i64 do
+  println(sum_sq(10))
+  return 0
+end

@@ -1,0 +1,19 @@
+main() -> i64 do
+  declare game = game_new(320, 180, "LineScript Window Demo", true)
+  game_set_target_fps(game, 60)
+
+  while not game_should_close(game) do
+    game_begin(game)
+    declare t = game_frame(game)
+    declare mx = to_i64(round(game_mouse_x(game)))
+    declare my = to_i64(round(game_mouse_y(game)))
+    game_clear(game, 18, 22, 30)
+    game_rect(game, (t * 2) % 260, 70, 60, 40, 255, 170, 60, true)
+    game_rect(game, mx - 4, my - 4, 8, 8, 120, 255, 120, true)
+    game_line(game, 0, 0, 319, 179, 90, 220, 255)
+    game_end(game)
+  end
+
+  game_free(game)
+  return 0
+end

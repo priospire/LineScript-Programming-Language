@@ -19,6 +19,15 @@
 #include <utility>
 #include <vector>
 
+#if defined(_MSC_VER) && !defined(__clang__)
+// MSVC does not provide native __int128 in C++; keep source parseable in MSVC mode.
+// Clang/clang-cl remains the high-performance path with real 128-bit folding.
+#define LS_HOST_NO_INT128 1
+#define __int128 int64_t
+#else
+#define LS_HOST_NO_INT128 0
+#endif
+
 namespace ls {
 
 struct Span {
@@ -1284,8 +1293,18 @@ private:
     addSig("byte_at", {Type::Str, Type::I64}, Type::I64, s);
     addSig("ord", {Type::Str}, Type::I64, s);
     addSig("chr", {Type::I64}, Type::Str, s);
+    addSig("mem_alloc", {Type::I64}, Type::I64, s);
+    addSig("mem_realloc", {Type::I64, Type::I64}, Type::I64, s);
+    addSig("mem_free", {Type::I64}, Type::Void, s);
+    addSig("mem_set", {Type::I64, Type::I64, Type::I64}, Type::Void, s);
+    addSig("mem_copy", {Type::I64, Type::I64, Type::I64}, Type::Void, s);
+    addSig("mem_read_i64", {Type::I64}, Type::I64, s);
+    addSig("mem_write_i64", {Type::I64, Type::I64}, Type::Void, s);
+    addSig("mem_read_f64", {Type::I64}, Type::F64, s);
+    addSig("mem_write_f64", {Type::I64, Type::F64}, Type::Void, s);
     addSig("array_new", {}, Type::I64, s);
     addSig("array_len", {Type::I64}, Type::I64, s);
+    addSig("array_free", {Type::I64}, Type::Void, s);
     addSig("array_push", {Type::I64, Type::Str}, Type::Void, s);
     addSig("array_get", {Type::I64, Type::I64}, Type::Str, s);
     addSig("array_set", {Type::I64, Type::I64, Type::Str}, Type::Void, s);
@@ -1294,18 +1313,21 @@ private:
     addSig("array_includes", {Type::I64, Type::Str}, Type::Bool, s);
     addSig("dict_new", {}, Type::I64, s);
     addSig("dict_len", {Type::I64}, Type::I64, s);
+    addSig("dict_free", {Type::I64}, Type::Void, s);
     addSig("dict_set", {Type::I64, Type::Str, Type::Str}, Type::Void, s);
     addSig("dict_get", {Type::I64, Type::Str}, Type::Str, s);
     addSig("dict_has", {Type::I64, Type::Str}, Type::Bool, s);
     addSig("dict_remove", {Type::I64, Type::Str}, Type::Void, s);
     addSig("map_new", {}, Type::I64, s);
     addSig("map_len", {Type::I64}, Type::I64, s);
+    addSig("map_free", {Type::I64}, Type::Void, s);
     addSig("map_set", {Type::I64, Type::Str, Type::Str}, Type::Void, s);
     addSig("map_get", {Type::I64, Type::Str}, Type::Str, s);
     addSig("map_has", {Type::I64, Type::Str}, Type::Bool, s);
     addSig("map_remove", {Type::I64, Type::Str}, Type::Void, s);
     addSig("object_new", {}, Type::I64, s);
     addSig("object_len", {Type::I64}, Type::I64, s);
+    addSig("object_free", {Type::I64}, Type::Void, s);
     addSig("object_set", {Type::I64, Type::Str, Type::Str}, Type::Void, s);
     addSig("object_get", {Type::I64, Type::Str}, Type::Str, s);
     addSig("object_has", {Type::I64, Type::Str}, Type::Bool, s);
@@ -3388,6 +3410,14 @@ static bool optE(EP &e, const std::unordered_map<std::string, const Fn *> &cand)
       break;
     case BK::Sub:
       if (isZero(*n.r)) { e = std::move(n.l); return true; }
+      if (n.l->k == EK::Var && n.r->k == EK::Var) {
+        const auto &lv = static_cast<const EVar &>(*n.l);
+        const auto &rv = static_cast<const EVar &>(*n.r);
+        if (lv.n == rv.n && e->typed && e->inf == Type::I64) {
+          e = std::make_unique<EInt>(0, n.s);
+          return true;
+        }
+      }
       break;
     case BK::Mul:
       if (isOne(*n.r)) { e = std::move(n.l); return true; }
@@ -3982,6 +4012,11 @@ static bool optBlock(std::vector<SP> &b, const std::unordered_map<std::string, c
 }
 
 static void optimize(Program &p, int passes) {
+#if LS_HOST_NO_INT128
+  (void)p;
+  (void)passes;
+  return;
+#else
   for (int k = 0; k < passes; ++k) {
     auto c = inlineCands(p);
     bool ch = false;
@@ -3989,6 +4024,7 @@ static void optimize(Program &p, int passes) {
       if (!f.ex) ch |= optBlock(f.b, c, false);
     if (!ch) break;
   }
+#endif
 }
 
 class EmitC {
@@ -5033,6 +5069,55 @@ private:
     o_ << "  out[1] = '\\0';\n";
     o_ << "  return out;\n";
     o_ << "}\n";
+    o_ << "static inline int64_t mem_alloc(int64_t bytes) {\n";
+    o_ << "  if (bytes <= 0) return 0;\n";
+    o_ << "  if ((uint64_t)bytes > (uint64_t)SIZE_MAX) return 0;\n";
+    o_ << "  void *p = malloc((size_t)bytes);\n";
+    o_ << "  return p ? (int64_t)(intptr_t)p : 0;\n";
+    o_ << "}\n";
+    o_ << "static inline int64_t mem_realloc(int64_t ptr, int64_t bytes) {\n";
+    o_ << "  if (bytes <= 0) {\n";
+    o_ << "    if (ptr != 0) free((void *)(intptr_t)ptr);\n";
+    o_ << "    return 0;\n";
+    o_ << "  }\n";
+    o_ << "  if ((uint64_t)bytes > (uint64_t)SIZE_MAX) return 0;\n";
+    o_ << "  void *base = ptr ? (void *)(intptr_t)ptr : NULL;\n";
+    o_ << "  void *p = realloc(base, (size_t)bytes);\n";
+    o_ << "  return p ? (int64_t)(intptr_t)p : 0;\n";
+    o_ << "}\n";
+    o_ << "static inline void mem_free(int64_t ptr) {\n";
+    o_ << "  if (ptr != 0) free((void *)(intptr_t)ptr);\n";
+    o_ << "}\n";
+    o_ << "static inline void mem_set(int64_t ptr, int64_t byte_val, int64_t bytes) {\n";
+    o_ << "  if (ptr == 0 || bytes <= 0) return;\n";
+    o_ << "  if ((uint64_t)bytes > (uint64_t)SIZE_MAX) return;\n";
+    o_ << "  memset((void *)(intptr_t)ptr, (int)(byte_val & 0xFF), (size_t)bytes);\n";
+    o_ << "}\n";
+    o_ << "static inline void mem_copy(int64_t dst, int64_t src, int64_t bytes) {\n";
+    o_ << "  if (dst == 0 || src == 0 || bytes <= 0) return;\n";
+    o_ << "  if ((uint64_t)bytes > (uint64_t)SIZE_MAX) return;\n";
+    o_ << "  memmove((void *)(intptr_t)dst, (const void *)(intptr_t)src, (size_t)bytes);\n";
+    o_ << "}\n";
+    o_ << "static inline int64_t mem_read_i64(int64_t ptr) {\n";
+    o_ << "  if (ptr == 0) return 0;\n";
+    o_ << "  int64_t out = 0;\n";
+    o_ << "  memcpy(&out, (const void *)(intptr_t)ptr, sizeof(out));\n";
+    o_ << "  return out;\n";
+    o_ << "}\n";
+    o_ << "static inline void mem_write_i64(int64_t ptr, int64_t v) {\n";
+    o_ << "  if (ptr == 0) return;\n";
+    o_ << "  memcpy((void *)(intptr_t)ptr, &v, sizeof(v));\n";
+    o_ << "}\n";
+    o_ << "static inline double mem_read_f64(int64_t ptr) {\n";
+    o_ << "  if (ptr == 0) return 0.0;\n";
+    o_ << "  double out = 0.0;\n";
+    o_ << "  memcpy(&out, (const void *)(intptr_t)ptr, sizeof(out));\n";
+    o_ << "  return out;\n";
+    o_ << "}\n";
+    o_ << "static inline void mem_write_f64(int64_t ptr, double v) {\n";
+    o_ << "  if (ptr == 0) return;\n";
+    o_ << "  memcpy((void *)(intptr_t)ptr, &v, sizeof(v));\n";
+    o_ << "}\n";
     o_ << "#define LS_MAX_ARRAYS 2048\n";
     o_ << "typedef struct {\n";
     o_ << "  char **items;\n";
@@ -5069,6 +5154,18 @@ private:
     o_ << "static inline int64_t array_len(int64_t id) {\n";
     o_ << "  ls_array *a = ls_get_array(id);\n";
     o_ << "  return a ? a->len : 0;\n";
+    o_ << "}\n";
+    o_ << "static inline void array_free(int64_t id) {\n";
+    o_ << "  ls_array *a = ls_get_array(id);\n";
+    o_ << "  if (!a) return;\n";
+    o_ << "  for (int64_t i = 0; i < a->len; ++i) {\n";
+    o_ << "    if (a->items[i]) free(a->items[i]);\n";
+    o_ << "  }\n";
+    o_ << "  if (a->items) free(a->items);\n";
+    o_ << "  a->items = NULL;\n";
+    o_ << "  a->len = 0;\n";
+    o_ << "  a->cap = 0;\n";
+    o_ << "  a->active = 0;\n";
     o_ << "}\n";
     o_ << "static inline void array_push(int64_t id, const char *value) {\n";
     o_ << "  ls_array *a = ls_get_array(id);\n";
@@ -5238,6 +5335,23 @@ private:
     o_ << "  ls_dict *d = ls_get_dict(id);\n";
     o_ << "  return d ? d->len : 0;\n";
     o_ << "}\n";
+    o_ << "static inline void dict_free(int64_t id) {\n";
+    o_ << "  ls_dict *d = ls_get_dict(id);\n";
+    o_ << "  if (!d) return;\n";
+    o_ << "  if (d->items) {\n";
+    o_ << "    for (int64_t i = 0; i < d->cap; ++i) {\n";
+    o_ << "      if (d->items[i].used) {\n";
+    o_ << "        if (d->items[i].key) free(d->items[i].key);\n";
+    o_ << "        if (d->items[i].value) free(d->items[i].value);\n";
+    o_ << "      }\n";
+    o_ << "    }\n";
+    o_ << "    free(d->items);\n";
+    o_ << "  }\n";
+    o_ << "  d->items = NULL;\n";
+    o_ << "  d->len = 0;\n";
+    o_ << "  d->cap = 0;\n";
+    o_ << "  d->active = 0;\n";
+    o_ << "}\n";
     o_ << "static inline void dict_set(int64_t id, const char *key, const char *value) {\n";
     o_ << "  ls_dict *d = ls_get_dict(id);\n";
     o_ << "  if (!d) return;\n";
@@ -5323,12 +5437,14 @@ private:
     o_ << "static inline const char *map_get(int64_t id, const char *k) { return dict_get(id, k); }\n";
     o_ << "static inline ls_bool map_has(int64_t id, const char *k) { return dict_has(id, k); }\n";
     o_ << "static inline void map_remove(int64_t id, const char *k) { dict_remove(id, k); }\n";
+    o_ << "static inline void map_free(int64_t id) { dict_free(id); }\n";
     o_ << "static inline int64_t object_new(void) { return dict_new(); }\n";
     o_ << "static inline int64_t object_len(int64_t id) { return dict_len(id); }\n";
     o_ << "static inline void object_set(int64_t id, const char *k, const char *v) { dict_set(id, k, v); }\n";
     o_ << "static inline const char *object_get(int64_t id, const char *k) { return dict_get(id, k); }\n";
     o_ << "static inline ls_bool object_has(int64_t id, const char *k) { return dict_has(id, k); }\n";
     o_ << "static inline void object_remove(int64_t id, const char *k) { dict_remove(id, k); }\n";
+    o_ << "static inline void object_free(int64_t id) { dict_free(id); }\n";
     o_ << "#define LS_MAX_NP 1024\n";
     o_ << "#define LS_MAX_NP_ELEMS 10000000\n";
     o_ << "typedef struct {\n";
@@ -7569,6 +7685,7 @@ struct Opt {
   std::vector<std::filesystem::path> inputs;
   std::filesystem::path out;
   std::string cc = "clang";
+  std::string backend = "auto";
   bool build = false;
   bool run = false;
   bool check = false;
@@ -7585,6 +7702,7 @@ static void usage() {
   std::cerr << "  --build         compile to native binary via C compiler\n";
   std::cerr << "  --run           build and run native binary\n";
   std::cerr << "  --cc <name>     C compiler command (default: clang)\n";
+  std::cerr << "  --backend <x>   backend: auto|c|asm (default: auto)\n";
   std::cerr << "  --passes <n>    greedy optimization passes (default: 12)\n";
   std::cerr << "  --max-speed     favor highest runtime speed flags\n";
   std::cerr << "  --keep-c        keep generated C when --build\n";
@@ -7599,6 +7717,10 @@ static std::string lower(std::string s) {
 static bool isSourceExt(const std::filesystem::path &p) {
   const std::string ext = lower(p.extension().string());
   return ext == ".lsc" || ext == ".ls";
+}
+static bool isValidBackend(const std::string &backend) {
+  const std::string b = lower(backend);
+  return b == "auto" || b == "c" || b == "asm";
 }
 static bool isSafeCompilerCmdChar(char c) {
   const unsigned char u = static_cast<unsigned char>(c);
@@ -7657,6 +7779,9 @@ static Opt parseOpt(int argc, char **argv) {
           o.cc += argv[++i];
         }
       }
+    } else if (a == "--backend") {
+      if (i + 1 >= argc) throw std::runtime_error("missing value for --backend");
+      o.backend = argv[++i];
     } else if (a == "--passes") {
       if (i + 1 >= argc) throw std::runtime_error("missing value for --passes");
       o.passes = std::stoi(argv[++i]);
@@ -7676,6 +7801,9 @@ static Opt parseOpt(int argc, char **argv) {
   }
   if (o.inputs.empty()) throw std::runtime_error("input file is required");
   validateCompilerCommand(o.cc);
+  if (!isValidBackend(o.backend)) {
+    throw std::runtime_error("invalid --backend value (expected auto|c|asm): " + o.backend);
+  }
   if (o.check && (o.build || o.run)) {
     throw std::runtime_error("--check cannot be combined with --build/--run");
   }
@@ -7714,11 +7842,44 @@ static std::string lowerCopy(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return s;
 }
+static std::string flagsForAsmEmit(const std::string &flags) {
+  std::istringstream in(flags);
+  std::ostringstream out;
+  std::string tok;
+  bool first = true;
+  while (in >> tok) {
+    if (tok == "-flto" || tok.rfind("-Wl,", 0) == 0 || tok == "-fuse-ld=lld" || tok == "-nostdlib" ||
+        tok.rfind("-l", 0) == 0 || tok == "user32.lib" || tok == "gdi32.lib") {
+      continue;
+    }
+    if (!first) out << " ";
+    out << tok;
+    first = false;
+  }
+  if (first) return "-O3";
+  return out.str();
+}
+static std::string flagsForAsmLink(const std::string &flags) {
+  std::istringstream in(flags);
+  std::ostringstream out;
+  std::string tok;
+  bool first = true;
+  while (in >> tok) {
+    if (tok == "-nostdlib" || tok.rfind("-fuse-ld=", 0) == 0 || tok.rfind("-Wl,", 0) == 0 || tok.rfind("-l", 0) == 0 ||
+        tok == "user32.lib" || tok == "gdi32.lib") {
+      if (!first) out << " ";
+      out << tok;
+      first = false;
+    }
+  }
+  return out.str();
+}
 
 static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, bool hasParallelFor,
-                  bool hasWinGraphicsDep, bool ultraMinimalRuntime) {
+                  bool hasWinGraphicsDep, bool ultraMinimalRuntime, bool hasInteractiveInput) {
 #if !defined(_WIN32)
   (void)ultraMinimalRuntime;
+  (void)hasInteractiveInput;
 #endif
   const std::filesystem::path primaryIn = o.inputs.front();
   if (!o.build) {
@@ -7813,7 +7974,7 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
     }
   }
 #if defined(_WIN32)
-  const bool tryUltraNoCrt = ultraMinimalRuntime && o.maxSpeed && clangLike && !cleanOutputMode;
+  const bool tryUltraNoCrt = ultraMinimalRuntime && clangLike && !cleanOutputMode;
   if (tryUltraNoCrt) {
     std::vector<std::string> ultraFlagSets;
     ultraFlagSets.push_back(
@@ -7837,35 +7998,85 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
 
   std::string winLinkFlags;
   std::string winGuiFlags;
+  std::string winOptLinkFlags;
 #if defined(_WIN32)
   if (hasWinGraphicsDep) {
     winLinkFlags = msvcLike ? " user32.lib gdi32.lib" : " -luser32 -lgdi32";
   }
-  if (cleanOutputMode) {
+  const bool speedGuiMode = o.maxSpeed && !hasInteractiveInput && !ultraMinimalRuntime;
+  if (cleanOutputMode || speedGuiMode) {
     if (clangLike) {
       winGuiFlags = " -Xlinker /SUBSYSTEM:WINDOWS -Xlinker /ENTRY:mainCRTStartup";
     } else if (gccLike) {
       winGuiFlags = " -Wl,--subsystem,windows";
     }
   }
+  if (o.maxSpeed && (clangLike || gccLike)) {
+    winOptLinkFlags = " -Wl,/OPT:REF -Wl,/OPT:ICF";
+  }
+#endif
+
+  const std::string backendNorm = lowerCopy(stripOuterQuotes(o.backend));
+  const bool tryAsmBackend = (backendNorm == "asm" || backendNorm == "auto") && !msvcLike;
+  std::filesystem::path asmTmp = bin;
+  asmTmp += ".tmp.s";
+  if (tryAsmBackend) {
+    validatePathForShell(asmTmp, "generated assembly path");
+  }
+
+  std::string linkSuffix;
+#if defined(_WIN32)
+  linkSuffix = winLinkFlags + winOptLinkFlags + winGuiFlags;
 #endif
 
   int rc = 1;
   std::string usedFlags;
+  std::string usedBackend = "c";
+  std::vector<std::string> cppFallbackCommands = {"clang++", "g++"};
   for (const std::string &flags : flagSets) {
+    if (tryAsmBackend) {
+      const std::string asmFlags = flagsForAsmEmit(flags);
+      const std::string asmLinkFlags = flagsForAsmLink(flags);
+      std::ostringstream asmEmit;
+      asmEmit << qCmd(o.cc) << " " << asmFlags << " -fno-lto -S -masm=intel " << q(c) << " -o " << q(asmTmp);
+      rc = std::system(asmEmit.str().c_str());
+      if (rc == 0) {
+        std::ostringstream asmLink;
+        asmLink << qCmd(o.cc) << " " << asmLinkFlags << " " << q(asmTmp) << " -o " << q(bin) << linkSuffix;
+        rc = std::system(asmLink.str().c_str());
+        if (rc == 0) {
+          usedFlags = flags;
+          usedBackend = "asm";
+          break;
+        }
+      }
+      for (const std::string &cppCmdName : cppFallbackCommands) {
+        std::ostringstream cppCmd;
+        cppCmd << qCmd(cppCmdName) << " " << flags << " " << q(c) << " -o " << q(bin) << linkSuffix;
+        rc = std::system(cppCmd.str().c_str());
+        if (rc == 0) {
+          usedFlags = flags;
+          usedBackend = "cpp-fallback";
+          break;
+        }
+      }
+      if (rc == 0) break;
+    }
     std::ostringstream cmd;
-    cmd << qCmd(o.cc) << " " << flags << " " << q(c) << " -o " << q(bin);
-#if defined(_WIN32)
-    cmd << winLinkFlags;
-    cmd << winGuiFlags;
-#endif
+    cmd << qCmd(o.cc) << " " << flags << " " << q(c) << " -o " << q(bin) << linkSuffix;
     rc = std::system(cmd.str().c_str());
     if (rc == 0) {
       usedFlags = flags;
+      usedBackend = "c";
       break;
     }
   }
-  if (rc != 0) throw std::runtime_error("C compiler failed after fallback attempts");
+  if (rc != 0) {
+    if (backendNorm == "asm") {
+      throw std::runtime_error("ASM backend failed and fallback compilers were unavailable");
+    }
+    throw std::runtime_error("C compiler failed after fallback attempts");
+  }
 
   if (!o.keepC) {
     std::error_code ec;
@@ -7873,7 +8084,12 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   } else {
     if (!cleanOutputMode) std::cout << "Generated C: " << c << '\n';
   }
+  if (tryAsmBackend) {
+    std::error_code ec;
+    std::filesystem::remove(asmTmp, ec);
+  }
   if (!cleanOutputMode) {
+    std::cout << "Backend: " << usedBackend << '\n';
     std::cout << "Native flags: " << usedFlags << '\n';
     std::cout << "Built binary: " << bin << '\n';
   }
@@ -7923,8 +8139,11 @@ int main(int argc, char **argv) {
     const bool hasParallelFor = ls::hasParallelForProgram(p);
     const bool hasWinGraphicsDep = ls::hasWinGraphicsDepProgram(p);
     const bool ultraMinimalRuntime = ec.ultraMinimalRuntime();
+    const bool hasInteractiveInput = ls::hasCallNamedProgram(p, "input") || ls::hasCallNamedProgram(p, "input_i64") ||
+                                     ls::hasCallNamedProgram(p, "input_f64");
     const std::string cOut = ec.run();
-    return ls::finish(o, cOut, cleanOutputMode, hasParallelFor, hasWinGraphicsDep, ultraMinimalRuntime);
+    return ls::finish(o, cOut, cleanOutputMode, hasParallelFor, hasWinGraphicsDep, ultraMinimalRuntime,
+                      hasInteractiveInput);
   } catch (const ls::CompileError &e) {
     if (!currentFile.empty()) {
       std::cerr << "LineScript error (" << currentFile << "): " << e.what() << '\n';
