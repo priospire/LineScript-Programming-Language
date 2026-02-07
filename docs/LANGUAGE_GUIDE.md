@@ -1,0 +1,592 @@
+# LineScript Language Guide
+
+This guide explains how to write and run LineScript programs quickly.
+
+## 1. Running Code
+
+Fastest workflow on Windows:
+
+```powershell
+.\linescript.cmd your_file.lsc --max-speed --cc clang
+```
+
+Performance note:
+- treat `--max-speed` as the standard release mode.
+- use non-`--max-speed` builds mainly for debugging.
+- on Windows, `--max-speed` can use an ultra-minimal backend path for eligible programs to reduce startup overhead.
+
+Behavior:
+- auto-builds `lsc.exe` when needed
+- defaults to `--build --run` when not explicitly provided
+
+Manual usage:
+
+```powershell
+.\lsc.exe your_file.lsc --run --max-speed --cc clang
+```
+
+Fast syntax/type validation without building:
+
+```powershell
+.\lsc.exe your_file.lsc --check
+```
+
+## 2. Your First Program
+
+```linescript
+main() -> i64 do
+  println(12345)
+  return 0
+end
+```
+
+## 3. Function Start/End
+
+Use `do` to start and `end` to close:
+
+```linescript
+add(a: i64, b: i64) -> i64 do
+  return a + b
+end
+```
+
+Braces are also supported:
+
+```linescript
+add(a: i64, b: i64) -> i64 {
+  return a + b;
+}
+```
+
+## 4. Variables (`declare`)
+
+```linescript
+vars_demo() -> i64 do
+  declare x
+  declare y: i64
+  declare z = 10
+  declare const limit: i64 = 1000
+
+  x = 5
+  y = z + x
+  return y
+end
+```
+
+## 5. Keyword and Type Glossary
+
+- `declare`: declares a variable.
+- `const`: marks a declared variable as immutable (cannot be reassigned).
+- `i64`: 64-bit signed integer type.
+- `f64`: 64-bit floating-point type.
+- `bool`: boolean type (`true`/`false`).
+- `str`: string type for text like `"hello"`.
+- `->`: return type annotation in a function signature.
+- `do` / `end`: start and end a block.
+- `inline`: hint for aggressive inlining of small hot functions.
+- `extern`: declares a function implemented outside LineScript.
+- `parallel`: marks a `for` loop as data-parallel.
+- `spawn`: launches a zero-arg `void` function asynchronously and returns a task handle.
+- `await`: waits for one task handle.
+- `await_all`: waits for all spawned tasks.
+- `input`: reads one line and returns `str` (`input()` or `input("prompt")`).
+- `input_i64` / `input_f64`: read one line and parse numeric values.
+- `formatOutput` / `FormatOutput`: convert values to `str`.
+- `.stateSpeed()`: prints elapsed microseconds since the current function started.
+- `.format()`: inline run-format marker (no `end`); on Windows it enables GUI-subsystem linking.
+- `.freeConsole()` / `FreeConsole()`: inline console detach marker (no `end`).
+- `array_*`, `dict_*`, `map_*`: built-in collection helpers using `i64` handles.
+- `object_*`: OOP-style aliases over dictionary handles (`i64`).
+- `gfx_*`: built-in native 2D graphics helpers using `i64` canvas handles.
+- `game_*`: built-in 2D game runtime (frame loop + rendering + deterministic headless mode).
+- `pg_*`: pygame-like aliases over `game_*` and `gfx_*`.
+- `np_*`: numpy-like vector helpers over contiguous `f64` buffers.
+- `phys_*`: built-in physics object helpers using `i64` handles.
+- `camera_*`: built-in camera helpers bound to physics objects.
+- `key_down` / `key_down_name`: key polling helpers (native on Windows).
+
+## 6. Conditionals
+
+Standard:
+
+```linescript
+classify(x: i64) -> i64 do
+  if x < 0 do
+    return -1
+  elif x == 0 do
+    return 0
+  else do
+    return 1
+  end
+end
+```
+
+Unique syntax with `unless`:
+
+```linescript
+nonzero(x: i64) -> i64 do
+  unless x != 0 do
+    return 1
+  end
+  return x
+end
+```
+
+## 7. Loops
+
+`while`:
+
+```linescript
+countdown(n: i64) -> i64 do
+  declare i = n
+  while i > 0 do
+    i = i - 1
+  end
+  return 0
+end
+```
+
+`for` range:
+
+```linescript
+sum_to(n: i64) -> i64 do
+  declare total: i64 = 0
+  for i in 0..(n + 1) do
+    total = total + i
+  end
+  return total
+end
+```
+
+Loop control:
+
+```linescript
+scan(n: i64) -> i64 do
+  declare count: i64 = 0
+  for i in 0..n do
+    if i % 2 == 0 do
+      continue
+    end
+    if count > 1000 do
+      break
+    end
+    count = count + 1
+  end
+  return count
+end
+```
+
+Postfix increment/decrement:
+
+```linescript
+declare i = 0
+i++
+i--
+i += 5
+i -= 2
+i *= 3
+i /= 2
+i %= 7
+i ^= 2
+i **= 2
+```
+
+Notes:
+- `%=` requires `i64`.
+- `^=` / `**=` use power semantics.
+
+## 8. Parallel and Async
+
+Data-parallel loop:
+
+```linescript
+parallel for i in 0..1000000 do
+  declare x = i * i
+  if x < 0 do
+    println(x)
+  end
+end
+```
+
+Async task primitives:
+
+```linescript
+worker() -> void do
+  println("worker complete")
+end
+
+main() -> i64 do
+  declare t = spawn(worker())
+  await(t)
+  await_all()
+  return 0
+end
+```
+
+Rules:
+- `spawn` must be `spawn(fn())`
+- `fn` must take zero args and return `void`
+- `parallel for` does not allow `break`/`continue`
+
+Formatting helper:
+
+```linescript
+println(formatOutput(42))
+println(FormatOutput(3.5))
+println(formatOutput("x"))
+```
+
+Block formatter:
+
+```linescript
+formatOutput("\n") do
+  print("value=")
+  print(42)
+end
+```
+
+Inline speed probe:
+
+```linescript
+main() -> i64 do
+  declare total: i64 = 0
+  for i in 0..500000 do
+    total = total + i
+  end
+  .stateSpeed()
+  return 0
+end
+```
+
+Inline run-format marker (no closing statement):
+
+```linescript
+main() -> i64 do
+  .format()
+  declare name = input("Name: ")
+  println(name)
+  return 0
+end
+```
+
+Inline console detach marker (no closing statement):
+
+```linescript
+main() -> i64 do
+  .freeConsole()
+  declare game = game_new(320, 180, "LineScript Game", true)
+  while not game_should_close(game) do
+    game_begin(game)
+    game_clear(game, 18, 22, 30)
+    game_end(game)
+  end
+  game_free(game)
+  return 0
+end
+```
+
+Notes:
+- on Windows, `.freeConsole()` / `FreeConsole()` detach the console window.
+- on non-Windows targets they are safe no-ops.
+
+## 9. Input and Collections
+
+Input to variable:
+
+```linescript
+declare name = input("name: ")
+declare age = input_i64("age: ")
+declare score = input_f64("score: ")
+```
+
+Input to array index:
+
+```linescript
+declare arr = array_new()
+array_set(arr, 0, input())
+println(array_get(arr, 0))
+```
+
+Input to dictionary key:
+
+```linescript
+declare d = dict_new()
+dict_set(d, "name", input("name: "))
+println(dict_get(d, "name"))
+```
+
+Map aliases:
+
+```linescript
+declare m = map_new()
+map_set(m, "x", "10")
+println(map_get(m, "x"))
+```
+
+Native graphics (2D raster):
+
+```linescript
+declare canvas = gfx_new(320, 200)
+gfx_clear(canvas, 20, 20, 30)
+gfx_line(canvas, 0, 0, 319, 199, 255, 0, 0)
+gfx_rect(canvas, 20, 20, 80, 50, 0, 200, 255, false)
+println(gfx_get(canvas, 10, 10))
+println(gfx_save_ppm(canvas, "frame.ppm"))
+gfx_free(canvas)
+```
+
+Notes:
+- out-of-range pixel writes are ignored safely
+- `gfx_get` returns packed RGB `(r << 16) | (g << 8) | b`
+- `gfx_save_ppm` writes a `.ppm` image and returns `bool`
+
+Physics + camera + input polling:
+
+```linescript
+declare player = phys_new(0.0, 2.0, 0.0, 1.0, false)
+camera_bind(player)
+camera_set_offset(0.0, 1.8, -6.0)
+
+if key_down_name("SPACE") do
+  phys_apply_force(player, 0.0, 8.0, 0.0)
+end
+
+phys_step(0.016)
+println(camera_target())
+println(to_i64(round(camera_get_y())))
+phys_free(player)
+```
+
+Notes:
+- camera defaults to the first active object and auto-rebinds if target is freed.
+- `key_down*` is native on Windows; non-Windows targets safely return `false`.
+
+Native game loop (smooth window mode + deterministic test mode):
+
+```linescript
+declare game = game_new(320, 180, "LineScript Game", true)
+game_set_target_fps(game, 60)
+
+while not game_should_close(game) do
+  game_begin(game)
+  declare mx = to_i64(round(game_mouse_x(game)))
+  declare my = to_i64(round(game_mouse_y(game)))
+  game_clear(game, 18, 22, 30)
+  game_rect(game, mx - 4, my - 4, 8, 8, 120, 255, 120, true)
+  game_rect(game, 30, 30, 80, 50, 255, 170, 60, true)
+  game_line(game, 0, 0, 319, 179, 90, 220, 255)
+  game_end(game)
+end
+
+game_free(game)
+```
+
+Deterministic headless mode for tests:
+- create with `game_new(..., false)`
+- `game_set_fixed_dt(game, dt)` for fixed frame step
+- `game_set_target_fps(game, 0)` to disable sleeping
+- verify output with `game_checksum(game)`
+- `game_mouse_x/y` map mouse coordinates to simulation resolution
+- `game_mouse_norm_x/y` return normalized `[0.0, 1.0]`
+
+Pygame-like aliases:
+
+```linescript
+declare g = pg_init(320, 180, "Demo", true)
+pg_set_target_fps(g, 60)
+while not pg_should_quit(g) do
+  pg_begin(g)
+  pg_clear(g, 18, 22, 30)
+  pg_draw_rect(g, 30, 30, 80, 50, 255, 170, 60, true)
+  pg_end(g)
+end
+pg_quit(g)
+```
+
+NumPy-like vectors:
+
+```linescript
+declare a = np_from_range(0.0, 5.0, 1.0)
+declare b = np_linspace(1.0, 5.0, 5)
+declare c = np_add(a, b)
+println(to_i64(round(np_dot(a, b))))
+np_add_scalar(c, 1.0)
+np_clip(c, 2.0, 4.0)
+println(to_i64(round(np_mean(c))))
+np_free(a)
+np_free(b)
+np_free(c)
+```
+## 10. Operators
+
+Arithmetic:
+- `+`, `-`, `*`, `/`, `%`
+- power: `**` and `^`
+- compound assignment: `+=`, `-=`, `*=`, `/=`, `%=`, `^=`, `**=`
+
+Comparison:
+- `==`, `!=`, `<`, `<=`, `>`, `>=`
+
+Logical:
+- `&&`, `||`
+- `and`, `or`, `not`
+
+## 11. Printing
+
+Recommended generic API:
+
+```linescript
+print(10)
+println(10)
+println(3.14159)
+println(true)
+println("x")
+```
+
+Behavior:
+- `print(x)` prints the value of variable `x`.
+- `print("x")` prints the literal text `x`.
+
+## 12. String and Byte Helpers
+
+Common text/byte helpers:
+- `len`, `bytes_len`, `contains`, `includes`, `starts_with`, `ends_with`, `find`
+- `trim`, `lower`, `upper`, `replace`, `substring`, `repeat`, `reverse`
+- `byte_at`, `ord`, `chr`
+
+## 13. Math Library
+
+Examples:
+
+```linescript
+math_demo(x: f64) -> f64 do
+  declare base = sqrt(x)
+  declare trig = sin(x) + cos(x) + tan(x)
+  declare p = x ** 2.0
+  declare unit = deg_to_rad(180.0)
+  return base + trig + p + unit + pi()
+end
+```
+
+Common utility helpers:
+- text: `len`, `is_empty`, `contains`, `includes`, `starts_with`, `ends_with`, `find`
+- conversion: `parse_i64`, `parse_f64`, `to_i64`, `to_f64`
+- integer helpers: `gcd`, `lcm`, `min_i64`, `max_i64`, `abs_i64`, `clamp_i64`
+- ad-hoc generic numeric helpers: `max`, `min`, `abs`, `clamp`
+
+## 14. Programming Styles
+
+Object-Oriented style (object model with methods on handles):
+
+```linescript
+player_new(name: str, hp: i64) -> i64 do
+  declare p = object_new()
+  object_set(p, "name", name)
+  object_set(p, "hp", formatOutput(hp))
+  return p
+end
+
+player_hit(p: i64, dmg: i64) -> void do
+  declare hp = parse_i64(object_get(p, "hp"))
+  hp = max(0, hp - dmg)
+  object_set(p, "hp", formatOutput(hp))
+end
+```
+
+Functional style (pure functions, immutable values, composition):
+
+```linescript
+sqr(x: i64) -> i64 do
+  return x * x
+end
+
+sum_of_squares(n: i64) -> i64 do
+  declare const limit = n
+  declare acc: i64 = 0
+  for i in 0..limit do
+    acc = acc + sqr(i)
+  end
+  return acc
+end
+```
+
+Generic style (ad-hoc numeric generics):
+
+```linescript
+println(max(2, 7))        // i64
+println(max(2.5, 7.0))    // f64
+println(clamp(1.5, 0.0, 1.0))
+```
+
+## 15. Modular Programs
+
+Compile multiple files as one program:
+
+```powershell
+.\lsc.exe examples\module_math.lsc examples\module_main.lsc --run --max-speed --cc clang
+```
+
+## 16. Benchmarking
+
+Inside LineScript:
+
+```linescript
+main() -> i64 do
+  declare t0 = clock_us()
+  declare s: i64 = 0
+  for i in 0..5000000 do
+    s = s + i
+  end
+  declare t1 = clock_us()
+  println(s)
+  println(t1 - t0)
+  return 0
+end
+```
+
+External timing from PowerShell:
+
+```powershell
+.\lsc.exe examples\benchmark.lsc --build --cc clang --max-speed -o examples\benchmark.exe
+Measure-Command { .\examples\benchmark.exe > $null }
+```
+
+## 17. Performance Checklist
+
+1. Build with `--max-speed`.
+2. Keep hot loops numeric and simple.
+3. Use `inline` for very small hot functions.
+4. Use `i64` unless `f64` is required.
+5. Use `parallel for` only for independent loop bodies.
+6. Avoid loop-carried dependencies to help vectorization.
+7. Benchmark with warm-up runs before collecting timing samples.
+
+## 18. Deterministic Testing
+
+Run the full regression suite:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\run_tests.ps1
+```
+
+It validates:
+- deterministic runtime outputs
+- expected compile failures and diagnostics
+- CLI hardening rules
+
+Run deterministic stress workloads:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\run_stress_tests.ps1
+```
+
+## 19. Fresh Project in VS Code / Other IDEs
+
+Complete step-by-step setup instructions are in:
+
+- `docs/IDE_SETUP.md`
+
+That guide includes:
+- fresh project creation
+- VS Code `tasks.json`
+- commands for other IDE run configurations
