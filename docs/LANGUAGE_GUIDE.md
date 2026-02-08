@@ -591,3 +591,35 @@ That guide includes:
 - fresh project creation
 - VS Code `tasks.json`
 - commands for other IDE run configurations
+
+## 20. Native Web Server
+
+LineScript includes built-in HTTP server/client primitives, so you can write local APIs with no external package:
+
+```linescript
+server_worker() -> void do
+  declare srv = http_server_listen(18081)
+  declare c = http_server_accept(srv)
+  declare req = http_server_read(c)
+  if contains(req, "GET /ping") do
+    http_server_respond_text(c, 200, "pong")
+  else do
+    http_server_respond_text(c, 400, "bad")
+  end
+  http_client_close(c)
+  http_server_close(srv)
+end
+
+main() -> i64 do
+  declare t = spawn(server_worker())
+  declare c = http_client_connect("127.0.0.1", 18081)
+  http_client_send(c, "GET /ping HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+  println(http_client_read(c))
+  http_client_close(c)
+  await(t)
+  return 0
+end
+```
+
+For full API details, see:
+- `docs/STDLIB.md`

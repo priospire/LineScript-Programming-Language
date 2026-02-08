@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "LineScript: Run Current File",
+      "type": "shell",
+      "command": ".\\linescript.cmd \"${file}\" --max-speed --cc clang",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "LineScript: Check Current File",
+      "type": "shell",
+      "command": ".\\linescript.cmd \"${file}\" --check",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "LineScript: Run main.lsc",
+      "type": "shell",
+      "command": ".\\linescript.cmd .\\main.lsc --max-speed --cc clang",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

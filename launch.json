@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "LineScript: Run Current File (via Task)",
+      "type": "node-terminal",
+      "request": "launch",
+      "preLaunchTask": "LineScript: Run Current File",
+      "command": "echo LineScript run task completed."
+    },
+    {
+      "name": "LineScript: Check Current File (via Task)",
+      "type": "node-terminal",
+      "request": "launch",
+      "preLaunchTask": "LineScript: Check Current File",
+      "command": "echo LineScript check task completed."
+    }
+  ]
+}

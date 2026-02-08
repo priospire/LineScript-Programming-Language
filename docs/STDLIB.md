@@ -39,6 +39,58 @@ main() -> i64 do
 end
 ```
 
+## Native HTTP (Web Server + Client)
+
+```linescript
+http_server_listen(port: i64) -> i64
+http_server_accept(server: i64) -> i64
+http_server_read(client: i64) -> str
+http_server_respond_text(client: i64, status: i64, body: str) -> void
+http_server_close(server: i64) -> void
+
+http_client_connect(host: str, port: i64) -> i64
+http_client_send(client: i64, data: str) -> void
+http_client_read(client: i64) -> str
+http_client_close(client: i64) -> void
+```
+
+Notes:
+- handles are `i64` ids; `-1` means failure.
+- `http_server_listen` starts a TCP listener.
+- `http_server_accept` blocks until one client connects.
+- `http_server_read` and `http_client_read` read one chunk (up to 16KB).
+- `http_server_respond_text` sends an HTTP/1.1 plain-text response.
+- on Windows, `ws2_32` is linked automatically when these APIs are used.
+
+Example:
+
+```linescript
+server_worker() -> void do
+  declare srv = http_server_listen(18081)
+  declare c = http_server_accept(srv)
+  declare req = http_server_read(c)
+  if contains(req, "GET /ping") do
+    http_server_respond_text(c, 200, "pong")
+  else do
+    http_server_respond_text(c, 400, "bad")
+  end
+  http_client_close(c)
+  http_server_close(srv)
+end
+
+main() -> i64 do
+  declare t = spawn(server_worker())
+  declare c = http_client_connect("127.0.0.1", 18081)
+  http_client_send(c, "GET /ping HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+  declare res = http_client_read(c)
+  println(contains(res, "200 OK"))
+  println(contains(res, "pong"))
+  http_client_close(c)
+  await(t)
+  return 0
+end
+```
+
 ## 2. Timing and Run Markers
 
 ```linescript

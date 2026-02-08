@@ -1273,6 +1273,15 @@ private:
     addSig(".format", {}, Type::Void, s);
     addSig(".freeConsole", {}, Type::Void, s);
     addSig("FreeConsole", {}, Type::Void, s);
+    addSig("http_server_listen", {Type::I64}, Type::I64, s);
+    addSig("http_server_accept", {Type::I64}, Type::I64, s);
+    addSig("http_server_read", {Type::I64}, Type::Str, s);
+    addSig("http_server_respond_text", {Type::I64, Type::I64, Type::Str}, Type::Void, s);
+    addSig("http_server_close", {Type::I64}, Type::Void, s);
+    addSig("http_client_connect", {Type::Str, Type::I64}, Type::I64, s);
+    addSig("http_client_send", {Type::I64, Type::Str}, Type::Void, s);
+    addSig("http_client_read", {Type::I64}, Type::Str, s);
+    addSig("http_client_close", {Type::I64}, Type::Void, s);
     addSig("input_i64", {Type::Str}, Type::I64, s);
     addSig("input_f64", {Type::Str}, Type::F64, s);
     addSig("includes", {Type::Str, Type::Str}, Type::Bool, s);
@@ -4042,6 +4051,14 @@ public:
     needsPowRuntime_ = hasPowProgram(p_);
     needsStateSpeedRuntime_ = hasCallNamedProgram(p_, "stateSpeed") || hasCallNamedProgram(p_, ".stateSpeed");
     needsFormatOutputRuntime_ = hasCallNamedProgram(p_, "formatOutput") || hasCallNamedProgram(p_, "FormatOutput");
+    needsHttpRuntime_ = hasCallNamedProgram(p_, "http_server_listen") || hasCallNamedProgram(p_, "http_server_accept") ||
+                        hasCallNamedProgram(p_, "http_server_read") ||
+                        hasCallNamedProgram(p_, "http_server_respond_text") ||
+                        hasCallNamedProgram(p_, "http_server_close") ||
+                        hasCallNamedProgram(p_, "http_client_connect") ||
+                        hasCallNamedProgram(p_, "http_client_send") ||
+                        hasCallNamedProgram(p_, "http_client_read") ||
+                        hasCallNamedProgram(p_, "http_client_close");
     for (const Fn &f : p_.f) {
       if (!f.ex && f.n == "main") {
         entry_ = &f;
@@ -4060,6 +4077,10 @@ public:
     o_ << "#include <string.h>\n\n";
     o_ << "#include <ctype.h>\n\n";
 #if defined(_WIN32)
+    if (needsHttpRuntime_) {
+      o_ << "#include <winsock2.h>\n";
+      o_ << "#include <ws2tcpip.h>\n\n";
+    }
     o_ << "#include <windows.h>\n\n";
     o_ << "#ifdef max\n";
     o_ << "#undef max\n";
@@ -4068,6 +4089,13 @@ public:
     o_ << "#undef min\n";
     o_ << "#endif\n\n";
 #else
+    if (needsHttpRuntime_) {
+      o_ << "#include <sys/types.h>\n";
+      o_ << "#include <sys/socket.h>\n";
+      o_ << "#include <netinet/in.h>\n";
+      o_ << "#include <arpa/inet.h>\n";
+      o_ << "#include <unistd.h>\n\n";
+    }
     o_ << "#include <pthread.h>\n\n";
 #endif
     o_ << "typedef uint8_t ls_bool;\n\n";
@@ -4133,6 +4161,7 @@ private:
   bool needsPowRuntime_ = false;
   bool needsStateSpeedRuntime_ = false;
   bool needsFormatOutputRuntime_ = false;
+  bool needsHttpRuntime_ = false;
   std::ostringstream o_;
   const Fn *entry_ = nullptr;
   int loopSerial_ = 0;
@@ -4598,6 +4627,68 @@ private:
       o_ << "static inline int64_t ls_mod_pos_i128(LS_I128 x, int64_t m) { if (m <= 0) return 0; LS_I128 r = x % (LS_I128)m; if (r < 0) r += (LS_I128)m; return (int64_t)r; }\n";
       o_ << "static inline int64_t ls_gcd_nonneg_i64(int64_t a, int64_t b) { if (a < 0) a = -a; if (b < 0) b = -b; while (b != 0) { const int64_t t = a % b; a = b; b = t; } return a; }\n";
       o_ << "static inline int64_t ls_mod_linear_period_i64(int64_t delta, int64_t m) { if (m <= 0) return 0; const int64_t d = ls_mod_pos_i128((LS_I128)delta, m); if (d == 0) return 1; const int64_t g = ls_gcd_nonneg_i64(d, m); if (g <= 0) return 0; return m / g; }\n";
+      o_ << "static inline ls_bool ls_mul_u64_overflow(uint64_t a, uint64_t b, uint64_t *out) {\n";
+      o_ << "  const uint64_t umax = (uint64_t)(~(uint64_t)0);\n";
+      o_ << "  if (!out) return 1;\n";
+      o_ << "  if (a == 0 || b == 0) { *out = 0; return 0; }\n";
+      o_ << "  if (a > (umax / b)) return 1;\n";
+      o_ << "  *out = a * b;\n";
+      o_ << "  return 0;\n";
+      o_ << "}\n";
+      o_ << "static inline ls_bool ls_floor_sum_u64_checked(uint64_t n, uint64_t m, uint64_t a, uint64_t b, uint64_t *out) {\n";
+      o_ << "  const uint64_t umax = (uint64_t)(~(uint64_t)0);\n";
+      o_ << "  if (!out || m == 0) return 0;\n";
+      o_ << "  uint64_t ans = 0;\n";
+      o_ << "  while (1) {\n";
+      o_ << "    if (a >= m) {\n";
+      o_ << "      const uint64_t q = a / m;\n";
+      o_ << "      a %= m;\n";
+      o_ << "      uint64_t x = n;\n";
+      o_ << "      uint64_t y = (n == 0) ? 0 : (n - 1);\n";
+      o_ << "      if ((x & 1ULL) == 0ULL) x >>= 1ULL; else y >>= 1ULL;\n";
+      o_ << "      uint64_t tri = 0, addv = 0;\n";
+      o_ << "      if (ls_mul_u64_overflow(x, y, &tri) || ls_mul_u64_overflow(tri, q, &addv) || (ans > umax - addv)) return 0;\n";
+      o_ << "      ans += addv;\n";
+      o_ << "    }\n";
+      o_ << "    if (b >= m) {\n";
+      o_ << "      const uint64_t q = b / m;\n";
+      o_ << "      b %= m;\n";
+      o_ << "      uint64_t addv = 0;\n";
+      o_ << "      if (ls_mul_u64_overflow(n, q, &addv) || (ans > umax - addv)) return 0;\n";
+      o_ << "      ans += addv;\n";
+      o_ << "    }\n";
+      o_ << "    uint64_t an = 0;\n";
+      o_ << "    if (ls_mul_u64_overflow(a, n, &an) || an > umax - b) return 0;\n";
+      o_ << "    const uint64_t y = an + b;\n";
+      o_ << "    if (y < m) break;\n";
+      o_ << "    n = y / m;\n";
+      o_ << "    b = y % m;\n";
+      o_ << "    const uint64_t t = m; m = a; a = t;\n";
+      o_ << "  }\n";
+      o_ << "  *out = ans;\n";
+      o_ << "  return 1;\n";
+      o_ << "}\n";
+      o_ << "static inline LS_I128 ls_sum_mod_linear_i128(int64_t n, int64_t m, int64_t a, int64_t b) {\n";
+      o_ << "  if (n <= 0 || m <= 0) return 0;\n";
+      o_ << "  const int64_t aa = ls_mod_pos_i128((LS_I128)a, m);\n";
+      o_ << "  const int64_t bb = ls_mod_pos_i128((LS_I128)b, m);\n";
+      o_ << "  uint64_t qsum = 0;\n";
+      o_ << "  if (ls_floor_sum_u64_checked((uint64_t)n, (uint64_t)m, (uint64_t)aa, (uint64_t)bb, &qsum)) {\n";
+      o_ << "    const LS_I128 nn = (LS_I128)n;\n";
+      o_ << "    const LS_I128 tri = (((LS_I128)aa * nn * (nn - 1)) >> 1);\n";
+      o_ << "    const LS_I128 total = tri + ((LS_I128)bb * nn);\n";
+      o_ << "    return total - ((LS_I128)m * (LS_I128)qsum);\n";
+      o_ << "  }\n";
+      o_ << "  LS_I128 acc = 0;\n";
+      o_ << "  int64_t cur = bb;\n";
+      o_ << "  const int64_t delta = aa;\n";
+      o_ << "  for (int64_t k = 0; k < n; ++k) {\n";
+      o_ << "    acc += (LS_I128)cur;\n";
+      o_ << "    cur += delta;\n";
+      o_ << "    if (cur >= m) cur -= m;\n";
+      o_ << "  }\n";
+      o_ << "  return acc;\n";
+      o_ << "}\n";
     }
     if (needsPowRuntime_) {
       o_ << "static inline int64_t ls_pow_i64(int64_t base, int64_t exp) { if (exp < 0) return 0; int64_t out = 1; while (exp > 0) { if (exp & 1LL) out *= base; exp >>= 1LL; if (exp > 0) base *= base; } return out; }\n";
@@ -4657,6 +4748,68 @@ private:
       o_ << "static inline int64_t ls_mod_pos_i128(LS_I128 x, int64_t m) { if (m <= 0) return 0; LS_I128 r = x % (LS_I128)m; if (r < 0) r += (LS_I128)m; return (int64_t)r; }\n";
       o_ << "static inline int64_t ls_gcd_nonneg_i64(int64_t a, int64_t b) { if (a < 0) a = -a; if (b < 0) b = -b; while (b != 0) { const int64_t t = a % b; a = b; b = t; } return a; }\n";
       o_ << "static inline int64_t ls_mod_linear_period_i64(int64_t delta, int64_t m) { if (m <= 0) return 0; const int64_t d = ls_mod_pos_i128((LS_I128)delta, m); if (d == 0) return 1; const int64_t g = ls_gcd_nonneg_i64(d, m); if (g <= 0) return 0; return m / g; }\n";
+      o_ << "static inline ls_bool ls_mul_u64_overflow(uint64_t a, uint64_t b, uint64_t *out) {\n";
+      o_ << "  const uint64_t umax = (uint64_t)(~(uint64_t)0);\n";
+      o_ << "  if (!out) return 1;\n";
+      o_ << "  if (a == 0 || b == 0) { *out = 0; return 0; }\n";
+      o_ << "  if (a > (umax / b)) return 1;\n";
+      o_ << "  *out = a * b;\n";
+      o_ << "  return 0;\n";
+      o_ << "}\n";
+      o_ << "static inline ls_bool ls_floor_sum_u64_checked(uint64_t n, uint64_t m, uint64_t a, uint64_t b, uint64_t *out) {\n";
+      o_ << "  const uint64_t umax = (uint64_t)(~(uint64_t)0);\n";
+      o_ << "  if (!out || m == 0) return 0;\n";
+      o_ << "  uint64_t ans = 0;\n";
+      o_ << "  while (1) {\n";
+      o_ << "    if (a >= m) {\n";
+      o_ << "      const uint64_t q = a / m;\n";
+      o_ << "      a %= m;\n";
+      o_ << "      uint64_t x = n;\n";
+      o_ << "      uint64_t y = (n == 0) ? 0 : (n - 1);\n";
+      o_ << "      if ((x & 1ULL) == 0ULL) x >>= 1ULL; else y >>= 1ULL;\n";
+      o_ << "      uint64_t tri = 0, addv = 0;\n";
+      o_ << "      if (ls_mul_u64_overflow(x, y, &tri) || ls_mul_u64_overflow(tri, q, &addv) || (ans > umax - addv)) return 0;\n";
+      o_ << "      ans += addv;\n";
+      o_ << "    }\n";
+      o_ << "    if (b >= m) {\n";
+      o_ << "      const uint64_t q = b / m;\n";
+      o_ << "      b %= m;\n";
+      o_ << "      uint64_t addv = 0;\n";
+      o_ << "      if (ls_mul_u64_overflow(n, q, &addv) || (ans > umax - addv)) return 0;\n";
+      o_ << "      ans += addv;\n";
+      o_ << "    }\n";
+      o_ << "    uint64_t an = 0;\n";
+      o_ << "    if (ls_mul_u64_overflow(a, n, &an) || an > umax - b) return 0;\n";
+      o_ << "    const uint64_t y = an + b;\n";
+      o_ << "    if (y < m) break;\n";
+      o_ << "    n = y / m;\n";
+      o_ << "    b = y % m;\n";
+      o_ << "    const uint64_t t = m; m = a; a = t;\n";
+      o_ << "  }\n";
+      o_ << "  *out = ans;\n";
+      o_ << "  return 1;\n";
+      o_ << "}\n";
+      o_ << "static inline LS_I128 ls_sum_mod_linear_i128(int64_t n, int64_t m, int64_t a, int64_t b) {\n";
+      o_ << "  if (n <= 0 || m <= 0) return 0;\n";
+      o_ << "  const int64_t aa = ls_mod_pos_i128((LS_I128)a, m);\n";
+      o_ << "  const int64_t bb = ls_mod_pos_i128((LS_I128)b, m);\n";
+      o_ << "  uint64_t qsum = 0;\n";
+      o_ << "  if (ls_floor_sum_u64_checked((uint64_t)n, (uint64_t)m, (uint64_t)aa, (uint64_t)bb, &qsum)) {\n";
+      o_ << "    const LS_I128 nn = (LS_I128)n;\n";
+      o_ << "    const LS_I128 tri = (((LS_I128)aa * nn * (nn - 1)) >> 1);\n";
+      o_ << "    const LS_I128 total = tri + ((LS_I128)bb * nn);\n";
+      o_ << "    return total - ((LS_I128)m * (LS_I128)qsum);\n";
+      o_ << "  }\n";
+      o_ << "  LS_I128 acc = 0;\n";
+      o_ << "  int64_t cur = bb;\n";
+      o_ << "  const int64_t delta = aa;\n";
+      o_ << "  for (int64_t k = 0; k < n; ++k) {\n";
+      o_ << "    acc += (LS_I128)cur;\n";
+      o_ << "    cur += delta;\n";
+      o_ << "    if (cur >= m) cur -= m;\n";
+      o_ << "  }\n";
+      o_ << "  return acc;\n";
+      o_ << "}\n";
     }
     if (needsPowRuntime_) {
       o_ << "static inline int64_t ls_pow_i64(int64_t base, int64_t exp) { if (exp < 0) return 0; int64_t out = 1; while (exp > 0) { if (exp & 1LL) out *= base; exp >>= 1LL; if (exp > 0) base *= base; } return out; }\n";
@@ -4803,6 +4956,68 @@ private:
     o_ << "  const int64_t g = ls_gcd_nonneg_i64(d, m);\n";
     o_ << "  if (g <= 0) return 0;\n";
     o_ << "  return m / g;\n";
+    o_ << "}\n";
+    o_ << "static inline ls_bool ls_mul_u64_overflow(uint64_t a, uint64_t b, uint64_t *out) {\n";
+    o_ << "  const uint64_t umax = (uint64_t)(~(uint64_t)0);\n";
+    o_ << "  if (!out) return 1;\n";
+    o_ << "  if (a == 0 || b == 0) { *out = 0; return 0; }\n";
+    o_ << "  if (a > (umax / b)) return 1;\n";
+    o_ << "  *out = a * b;\n";
+    o_ << "  return 0;\n";
+    o_ << "}\n";
+    o_ << "static inline ls_bool ls_floor_sum_u64_checked(uint64_t n, uint64_t m, uint64_t a, uint64_t b, uint64_t *out) {\n";
+    o_ << "  const uint64_t umax = (uint64_t)(~(uint64_t)0);\n";
+    o_ << "  if (!out || m == 0) return 0;\n";
+    o_ << "  uint64_t ans = 0;\n";
+    o_ << "  while (1) {\n";
+    o_ << "    if (a >= m) {\n";
+    o_ << "      const uint64_t q = a / m;\n";
+    o_ << "      a %= m;\n";
+    o_ << "      uint64_t x = n;\n";
+    o_ << "      uint64_t y = (n == 0) ? 0 : (n - 1);\n";
+    o_ << "      if ((x & 1ULL) == 0ULL) x >>= 1ULL; else y >>= 1ULL;\n";
+    o_ << "      uint64_t tri = 0, addv = 0;\n";
+    o_ << "      if (ls_mul_u64_overflow(x, y, &tri) || ls_mul_u64_overflow(tri, q, &addv) || (ans > umax - addv)) return 0;\n";
+    o_ << "      ans += addv;\n";
+    o_ << "    }\n";
+    o_ << "    if (b >= m) {\n";
+    o_ << "      const uint64_t q = b / m;\n";
+    o_ << "      b %= m;\n";
+    o_ << "      uint64_t addv = 0;\n";
+    o_ << "      if (ls_mul_u64_overflow(n, q, &addv) || (ans > umax - addv)) return 0;\n";
+    o_ << "      ans += addv;\n";
+    o_ << "    }\n";
+    o_ << "    uint64_t an = 0;\n";
+    o_ << "    if (ls_mul_u64_overflow(a, n, &an) || an > umax - b) return 0;\n";
+    o_ << "    const uint64_t y = an + b;\n";
+    o_ << "    if (y < m) break;\n";
+    o_ << "    n = y / m;\n";
+    o_ << "    b = y % m;\n";
+    o_ << "    const uint64_t t = m; m = a; a = t;\n";
+    o_ << "  }\n";
+    o_ << "  *out = ans;\n";
+    o_ << "  return 1;\n";
+    o_ << "}\n";
+    o_ << "static inline LS_I128 ls_sum_mod_linear_i128(int64_t n, int64_t m, int64_t a, int64_t b) {\n";
+    o_ << "  if (n <= 0 || m <= 0) return 0;\n";
+    o_ << "  const int64_t aa = ls_mod_pos_i128((LS_I128)a, m);\n";
+    o_ << "  const int64_t bb = ls_mod_pos_i128((LS_I128)b, m);\n";
+    o_ << "  uint64_t qsum = 0;\n";
+    o_ << "  if (ls_floor_sum_u64_checked((uint64_t)n, (uint64_t)m, (uint64_t)aa, (uint64_t)bb, &qsum)) {\n";
+    o_ << "    const LS_I128 nn = (LS_I128)n;\n";
+    o_ << "    const LS_I128 tri = (((LS_I128)aa * nn * (nn - 1)) >> 1);\n";
+    o_ << "    const LS_I128 total = tri + ((LS_I128)bb * nn);\n";
+    o_ << "    return total - ((LS_I128)m * (LS_I128)qsum);\n";
+    o_ << "  }\n";
+    o_ << "  LS_I128 acc = 0;\n";
+    o_ << "  int64_t cur = bb;\n";
+    o_ << "  const int64_t delta = aa;\n";
+    o_ << "  for (int64_t k = 0; k < n; ++k) {\n";
+    o_ << "    acc += (LS_I128)cur;\n";
+    o_ << "    cur += delta;\n";
+    o_ << "    if (cur >= m) cur -= m;\n";
+    o_ << "  }\n";
+    o_ << "  return acc;\n";
     o_ << "}\n";
     o_ << "static inline void ls_state_speed(int64_t start_us) {\n";
     o_ << "  const int64_t now_us = clock_us();\n";
@@ -6617,6 +6832,253 @@ private:
     o_ << "static inline int64_t input_i64_prompt(const char *prompt) { return parse_i64(input_prompt(prompt)); }\n";
     o_ << "static inline double input_f64(void) { return parse_f64(input()); }\n";
     o_ << "static inline double input_f64_prompt(const char *prompt) { return parse_f64(input_prompt(prompt)); }\n";
+    if (needsHttpRuntime_) {
+      o_ << "#define LS_HTTP_MAX_SERVERS 64\n";
+      o_ << "#define LS_HTTP_MAX_CLIENTS 256\n";
+      o_ << "#if defined(_WIN32)\n";
+      o_ << "typedef SOCKET ls_http_socket;\n";
+      o_ << "static ls_bool ls_http_wsa_ready = 0;\n";
+      o_ << "static inline ls_bool ls_http_init(void) {\n";
+      o_ << "  if (ls_http_wsa_ready) return 1;\n";
+      o_ << "  WSADATA wsa;\n";
+      o_ << "  if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return 0;\n";
+      o_ << "  ls_http_wsa_ready = 1;\n";
+      o_ << "  return 1;\n";
+      o_ << "}\n";
+      o_ << "static inline ls_bool ls_http_is_bad_socket(ls_http_socket s) { return s == INVALID_SOCKET; }\n";
+      o_ << "static inline ls_http_socket ls_http_bad_socket(void) { return INVALID_SOCKET; }\n";
+      o_ << "static inline void ls_http_close_socket(ls_http_socket s) {\n";
+      o_ << "  if (s != INVALID_SOCKET) (void)closesocket(s);\n";
+      o_ << "}\n";
+      o_ << "#else\n";
+      o_ << "typedef int ls_http_socket;\n";
+      o_ << "static inline ls_bool ls_http_init(void) { return 1; }\n";
+      o_ << "static inline ls_bool ls_http_is_bad_socket(ls_http_socket s) { return s < 0; }\n";
+      o_ << "static inline ls_http_socket ls_http_bad_socket(void) { return -1; }\n";
+      o_ << "static inline void ls_http_close_socket(ls_http_socket s) {\n";
+      o_ << "  if (s >= 0) (void)close(s);\n";
+      o_ << "}\n";
+      o_ << "#endif\n";
+      o_ << "typedef struct {\n";
+      o_ << "  ls_http_socket sock;\n";
+      o_ << "  ls_bool active;\n";
+      o_ << "} ls_http_server_slot;\n";
+      o_ << "typedef struct {\n";
+      o_ << "  ls_http_socket sock;\n";
+      o_ << "  ls_bool active;\n";
+      o_ << "} ls_http_client_slot;\n";
+      o_ << "static ls_http_server_slot ls_http_servers[LS_HTTP_MAX_SERVERS];\n";
+      o_ << "static ls_http_client_slot ls_http_clients[LS_HTTP_MAX_CLIENTS];\n";
+      o_ << "static inline ls_http_server_slot *ls_http_get_server(int64_t id) {\n";
+      o_ << "  if (id < 0 || id >= LS_HTTP_MAX_SERVERS) return NULL;\n";
+      o_ << "  if (!ls_http_servers[id].active) return NULL;\n";
+      o_ << "  return &ls_http_servers[id];\n";
+      o_ << "}\n";
+      o_ << "static inline ls_http_client_slot *ls_http_get_client(int64_t id) {\n";
+      o_ << "  if (id < 0 || id >= LS_HTTP_MAX_CLIENTS) return NULL;\n";
+      o_ << "  if (!ls_http_clients[id].active) return NULL;\n";
+      o_ << "  return &ls_http_clients[id];\n";
+      o_ << "}\n";
+      o_ << "static inline int64_t ls_http_alloc_server(ls_http_socket sock) {\n";
+      o_ << "  for (int64_t i = 0; i < LS_HTTP_MAX_SERVERS; ++i) {\n";
+      o_ << "    if (!ls_http_servers[i].active) {\n";
+      o_ << "      ls_http_servers[i].active = 1;\n";
+      o_ << "      ls_http_servers[i].sock = sock;\n";
+      o_ << "      return i;\n";
+      o_ << "    }\n";
+      o_ << "  }\n";
+      o_ << "  return -1;\n";
+      o_ << "}\n";
+      o_ << "static inline int64_t ls_http_alloc_client(ls_http_socket sock) {\n";
+      o_ << "  for (int64_t i = 0; i < LS_HTTP_MAX_CLIENTS; ++i) {\n";
+      o_ << "    if (!ls_http_clients[i].active) {\n";
+      o_ << "      ls_http_clients[i].active = 1;\n";
+      o_ << "      ls_http_clients[i].sock = sock;\n";
+      o_ << "      return i;\n";
+      o_ << "    }\n";
+      o_ << "  }\n";
+      o_ << "  return -1;\n";
+      o_ << "}\n";
+      o_ << "static inline ls_bool ls_http_send_all(ls_http_socket sock, const char *data, size_t len) {\n";
+      o_ << "  if (!data || len == 0) return 1;\n";
+      o_ << "  size_t off = 0;\n";
+      o_ << "  while (off < len) {\n";
+      o_ << "    const size_t left = len - off;\n";
+      o_ << "    const int chunk = (left > 2147483647u) ? 2147483647 : (int)left;\n";
+      o_ << "    const int sent = (int)send(sock, data + off, chunk, 0);\n";
+      o_ << "    if (sent <= 0) return 0;\n";
+      o_ << "    off += (size_t)sent;\n";
+      o_ << "  }\n";
+      o_ << "  return 1;\n";
+      o_ << "}\n";
+      o_ << "static inline const char *ls_http_recv_once(ls_http_socket sock) {\n";
+      o_ << "  char *buf = ls_scratch_take(16385);\n";
+      o_ << "  if (!buf) return \"\";\n";
+      o_ << "  const int n = (int)recv(sock, buf, 16384, 0);\n";
+      o_ << "  if (n <= 0) {\n";
+      o_ << "    buf[0] = '\\0';\n";
+      o_ << "    return buf;\n";
+      o_ << "  }\n";
+      o_ << "  buf[n] = '\\0';\n";
+      o_ << "  return buf;\n";
+      o_ << "}\n";
+      o_ << "static inline const char *ls_http_recv_to_close(ls_http_socket sock) {\n";
+      o_ << "  size_t cap = 4096;\n";
+      o_ << "  char *heap = (char *)malloc(cap);\n";
+      o_ << "  if (!heap) return \"\";\n";
+      o_ << "  size_t len = 0;\n";
+      o_ << "  while (1) {\n";
+      o_ << "    if (len + 1024 + 1 > cap) {\n";
+      o_ << "      size_t next_cap = cap << 1;\n";
+      o_ << "      if (next_cap > 1048576) next_cap = 1048576;\n";
+      o_ << "      if (next_cap <= cap) break;\n";
+      o_ << "      char *next = (char *)realloc(heap, next_cap);\n";
+      o_ << "      if (!next) break;\n";
+      o_ << "      heap = next;\n";
+      o_ << "      cap = next_cap;\n";
+      o_ << "    }\n";
+      o_ << "    const int chunk = (int)(cap - len - 1);\n";
+      o_ << "    if (chunk <= 0) break;\n";
+      o_ << "    const int n = (int)recv(sock, heap + len, chunk, 0);\n";
+      o_ << "    if (n <= 0) break;\n";
+      o_ << "    len += (size_t)n;\n";
+      o_ << "  }\n";
+      o_ << "  heap[len] = '\\0';\n";
+      o_ << "  const char *out = ls_scratch_dup(heap);\n";
+      o_ << "  free(heap);\n";
+      o_ << "  return out;\n";
+      o_ << "}\n";
+      o_ << "static inline const char *ls_http_reason_text(int64_t status) {\n";
+      o_ << "  switch (status) {\n";
+      o_ << "  case 200: return \"OK\";\n";
+      o_ << "  case 201: return \"Created\";\n";
+      o_ << "  case 204: return \"No Content\";\n";
+      o_ << "  case 400: return \"Bad Request\";\n";
+      o_ << "  case 401: return \"Unauthorized\";\n";
+      o_ << "  case 403: return \"Forbidden\";\n";
+      o_ << "  case 404: return \"Not Found\";\n";
+      o_ << "  case 409: return \"Conflict\";\n";
+      o_ << "  case 500: return \"Internal Server Error\";\n";
+      o_ << "  default: return \"OK\";\n";
+      o_ << "  }\n";
+      o_ << "}\n";
+      o_ << "static inline int64_t http_server_listen(int64_t port) {\n";
+      o_ << "  if (port < 1 || port > 65535) return -1;\n";
+      o_ << "  if (!ls_http_init()) return -1;\n";
+      o_ << "  ls_http_socket s = socket(AF_INET, SOCK_STREAM, 0);\n";
+      o_ << "  if (ls_http_is_bad_socket(s)) return -1;\n";
+      o_ << "  int reuse = 1;\n";
+      o_ << "#if defined(_WIN32)\n";
+      o_ << "  (void)setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char *)&reuse, (int)sizeof(reuse));\n";
+      o_ << "#else\n";
+      o_ << "  (void)setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &reuse, (int)sizeof(reuse));\n";
+      o_ << "#endif\n";
+      o_ << "  struct sockaddr_in addr;\n";
+      o_ << "  memset(&addr, 0, sizeof(addr));\n";
+      o_ << "  addr.sin_family = AF_INET;\n";
+      o_ << "  addr.sin_addr.s_addr = htonl(INADDR_ANY);\n";
+      o_ << "  addr.sin_port = htons((uint16_t)port);\n";
+      o_ << "  if (bind(s, (const struct sockaddr *)&addr, (int)sizeof(addr)) != 0) {\n";
+      o_ << "    ls_http_close_socket(s);\n";
+      o_ << "    return -1;\n";
+      o_ << "  }\n";
+      o_ << "  if (listen(s, 16) != 0) {\n";
+      o_ << "    ls_http_close_socket(s);\n";
+      o_ << "    return -1;\n";
+      o_ << "  }\n";
+      o_ << "  const int64_t id = ls_http_alloc_server(s);\n";
+      o_ << "  if (id < 0) {\n";
+      o_ << "    ls_http_close_socket(s);\n";
+      o_ << "    return -1;\n";
+      o_ << "  }\n";
+      o_ << "  return id;\n";
+      o_ << "}\n";
+      o_ << "static inline int64_t http_server_accept(int64_t server_id) {\n";
+      o_ << "  ls_http_server_slot *srv = ls_http_get_server(server_id);\n";
+      o_ << "  if (!srv) return -1;\n";
+      o_ << "  ls_http_socket c = accept(srv->sock, NULL, NULL);\n";
+      o_ << "  if (ls_http_is_bad_socket(c)) return -1;\n";
+      o_ << "  const int64_t id = ls_http_alloc_client(c);\n";
+      o_ << "  if (id < 0) {\n";
+      o_ << "    ls_http_close_socket(c);\n";
+      o_ << "    return -1;\n";
+      o_ << "  }\n";
+      o_ << "  return id;\n";
+      o_ << "}\n";
+      o_ << "static inline const char *http_server_read(int64_t client_id) {\n";
+      o_ << "  ls_http_client_slot *c = ls_http_get_client(client_id);\n";
+      o_ << "  if (!c) return \"\";\n";
+      o_ << "  return ls_http_recv_once(c->sock);\n";
+      o_ << "}\n";
+      o_ << "static inline void http_server_respond_text(int64_t client_id, int64_t status, const char *body) {\n";
+      o_ << "  ls_http_client_slot *c = ls_http_get_client(client_id);\n";
+      o_ << "  if (!c) return;\n";
+      o_ << "  const char *msg = body ? body : \"\";\n";
+      o_ << "  const char *reason = ls_http_reason_text(status);\n";
+      o_ << "  const size_t body_len = strlen(msg);\n";
+      o_ << "  char head[256];\n";
+      o_ << "  const int head_len = (int)snprintf(head, sizeof(head),\n";
+      o_ << "      \"HTTP/1.1 %lld %s\\r\\n\"\n";
+      o_ << "      \"Content-Type: text/plain; charset=utf-8\\r\\n\"\n";
+      o_ << "      \"Content-Length: %llu\\r\\n\"\n";
+      o_ << "      \"Connection: close\\r\\n\\r\\n\",\n";
+      o_ << "      (long long)status, reason, (unsigned long long)body_len);\n";
+      o_ << "  if (head_len <= 0) return;\n";
+      o_ << "  if (!ls_http_send_all(c->sock, head, (size_t)head_len)) return;\n";
+      o_ << "  (void)ls_http_send_all(c->sock, msg, body_len);\n";
+      o_ << "}\n";
+      o_ << "static inline void http_server_close(int64_t server_id) {\n";
+      o_ << "  ls_http_server_slot *srv = ls_http_get_server(server_id);\n";
+      o_ << "  if (!srv) return;\n";
+      o_ << "  ls_http_close_socket(srv->sock);\n";
+      o_ << "  srv->sock = ls_http_bad_socket();\n";
+      o_ << "  srv->active = 0;\n";
+      o_ << "}\n";
+      o_ << "static inline int64_t http_client_connect(const char *host, int64_t port) {\n";
+      o_ << "  if (port < 1 || port > 65535) return -1;\n";
+      o_ << "  if (!ls_http_init()) return -1;\n";
+      o_ << "  const char *addr_text = host ? host : \"\";\n";
+      o_ << "  if (addr_text[0] == '\\0' || strcmp(addr_text, \"localhost\") == 0) addr_text = \"127.0.0.1\";\n";
+      o_ << "  ls_http_socket s = socket(AF_INET, SOCK_STREAM, 0);\n";
+      o_ << "  if (ls_http_is_bad_socket(s)) return -1;\n";
+      o_ << "  struct sockaddr_in addr;\n";
+      o_ << "  memset(&addr, 0, sizeof(addr));\n";
+      o_ << "  addr.sin_family = AF_INET;\n";
+      o_ << "  addr.sin_port = htons((uint16_t)port);\n";
+      o_ << "  if (inet_pton(AF_INET, addr_text, &addr.sin_addr) != 1) {\n";
+      o_ << "    ls_http_close_socket(s);\n";
+      o_ << "    return -1;\n";
+      o_ << "  }\n";
+      o_ << "  if (connect(s, (const struct sockaddr *)&addr, (int)sizeof(addr)) != 0) {\n";
+      o_ << "    ls_http_close_socket(s);\n";
+      o_ << "    return -1;\n";
+      o_ << "  }\n";
+      o_ << "  const int64_t id = ls_http_alloc_client(s);\n";
+      o_ << "  if (id < 0) {\n";
+      o_ << "    ls_http_close_socket(s);\n";
+      o_ << "    return -1;\n";
+      o_ << "  }\n";
+      o_ << "  return id;\n";
+      o_ << "}\n";
+      o_ << "static inline void http_client_send(int64_t client_id, const char *data) {\n";
+      o_ << "  ls_http_client_slot *c = ls_http_get_client(client_id);\n";
+      o_ << "  if (!c) return;\n";
+      o_ << "  const char *msg = data ? data : \"\";\n";
+      o_ << "  (void)ls_http_send_all(c->sock, msg, strlen(msg));\n";
+      o_ << "}\n";
+      o_ << "static inline const char *http_client_read(int64_t client_id) {\n";
+      o_ << "  ls_http_client_slot *c = ls_http_get_client(client_id);\n";
+      o_ << "  if (!c) return \"\";\n";
+      o_ << "  return ls_http_recv_to_close(c->sock);\n";
+      o_ << "}\n";
+      o_ << "static inline void http_client_close(int64_t client_id) {\n";
+      o_ << "  ls_http_client_slot *c = ls_http_get_client(client_id);\n";
+      o_ << "  if (!c) return;\n";
+      o_ << "  ls_http_close_socket(c->sock);\n";
+      o_ << "  c->sock = ls_http_bad_socket();\n";
+      o_ << "  c->active = 0;\n";
+      o_ << "}\n";
+    }
     o_ << "static inline int64_t to_i64(double v) { return (int64_t)v; }\n";
     o_ << "static inline double to_f64(int64_t v) { return (double)v; }\n";
     o_ << "static inline uint64_t ls_abs_u64_i64(int64_t x) {\n";
@@ -7296,73 +7758,9 @@ private:
               o_ << "const int64_t " << modDeltaName << " = ls_mod_pos_i128((LS_I128)" << modLinearReduction->a
                  << "LL * (LS_I128)" << stepName << ", " << modMName << ");\n";
               ind(o_, k + 3);
-              o_ << "if (" << modDeltaName << " == 0) {\n";
-              ind(o_, k + 4);
-              o_ << redName << " = (__typeof__(" << redName << "))((LS_I128)" << redName << " + ((LS_I128)"
-                 << modCurName << " * (LS_I128)" << modIterName << "));\n";
-              ind(o_, k + 3);
-              o_ << "} else {\n";
-              ind(o_, k + 4);
-              o_ << "const int64_t " << modPeriodName << " = ls_mod_linear_period_i64(" << modDeltaName << ", "
-                 << modMName << ");\n";
-              ind(o_, k + 4);
-              o_ << "const int64_t " << modFullName << " = (" << modPeriodName << " > 0) ? (" << modIterName << " / "
-                 << modPeriodName << ") : 0;\n";
-              ind(o_, k + 4);
-              o_ << "const int64_t " << modRemName << " = (" << modPeriodName << " > 0) ? (" << modIterName << " - ("
-                 << modFullName << " * " << modPeriodName << ")) : " << modIterName << ";\n";
-              ind(o_, k + 4);
-              o_ << "if (" << modFullName << " >= 2) {\n";
-              ind(o_, k + 5);
-              o_ << "const int64_t " << modStartName << " = " << modCurName << ";\n";
-              ind(o_, k + 5);
-              o_ << "LS_I128 " << modCycleName << " = 0;\n";
-              ind(o_, k + 5);
-              o_ << "for (int64_t " << modKName << " = 0; " << modKName << " < " << modPeriodName << "; ++" << modKName
-                 << ") {\n";
-              ind(o_, k + 6);
-              o_ << modCycleName << " += (LS_I128)" << modCurName << ";\n";
-              ind(o_, k + 6);
-              o_ << modCurName << " += " << modDeltaName << ";\n";
-              ind(o_, k + 6);
-              o_ << "if (" << modCurName << " >= " << modMName << ") " << modCurName << " -= " << modMName << ";\n";
-              ind(o_, k + 5);
-              o_ << "}\n";
-              ind(o_, k + 5);
-              o_ << "LS_I128 " << modTailName << " = 0;\n";
-              ind(o_, k + 5);
-              o_ << modCurName << " = " << modStartName << ";\n";
-              ind(o_, k + 5);
-              o_ << "for (int64_t " << modKName << " = 0; " << modKName << " < " << modRemName << "; ++" << modKName
-                 << ") {\n";
-              ind(o_, k + 6);
-              o_ << modTailName << " += (LS_I128)" << modCurName << ";\n";
-              ind(o_, k + 6);
-              o_ << modCurName << " += " << modDeltaName << ";\n";
-              ind(o_, k + 6);
-              o_ << "if (" << modCurName << " >= " << modMName << ") " << modCurName << " -= " << modMName << ";\n";
-              ind(o_, k + 5);
-              o_ << "}\n";
-              ind(o_, k + 5);
-              o_ << redName << " = (__typeof__(" << redName << "))((LS_I128)" << redName << " + ((LS_I128)"
-                 << modFullName << " * " << modCycleName << ") + " << modTailName << ");\n";
-              ind(o_, k + 4);
-              o_ << "} else {\n";
-              ind(o_, k + 5);
-              o_ << "for (int64_t " << modKName << " = 0; " << modKName << " < " << modIterName << "; ++" << modKName
-                 << ") {\n";
-              ind(o_, k + 6);
-              o_ << redName << " += " << modCurName << ";\n";
-              ind(o_, k + 6);
-              o_ << modCurName << " += " << modDeltaName << ";\n";
-              ind(o_, k + 6);
-              o_ << "if (" << modCurName << " >= " << modMName << ") " << modCurName << " -= " << modMName << ";\n";
-              ind(o_, k + 5);
-              o_ << "}\n";
-              ind(o_, k + 4);
-              o_ << "}\n";
-              ind(o_, k + 3);
-              o_ << "}\n";
+              o_ << redName << " = (__typeof__(" << redName << "))((LS_I128)" << redName
+                 << " + ls_sum_mod_linear_i128(" << modIterName << ", " << modMName << ", " << modDeltaName << ", "
+                 << modCurName << "));\n";
               ind(o_, k + 2);
               o_ << "}\n";
               ind(o_, k + 2);
@@ -7466,73 +7864,9 @@ private:
               o_ << "const int64_t " << modDeltaName << " = ls_mod_pos_i128((LS_I128)" << modLinearReduction->a
                  << "LL * (LS_I128)" << stepName << ", " << modMName << ");\n";
               ind(o_, k + 3);
-              o_ << "if (" << modDeltaName << " == 0) {\n";
-              ind(o_, k + 4);
-              o_ << redName << " = (__typeof__(" << redName << "))((LS_I128)" << redName << " + ((LS_I128)"
-                 << modCurName << " * (LS_I128)" << modIterName << "));\n";
-              ind(o_, k + 3);
-              o_ << "} else {\n";
-              ind(o_, k + 4);
-              o_ << "const int64_t " << modPeriodName << " = ls_mod_linear_period_i64(" << modDeltaName << ", "
-                 << modMName << ");\n";
-              ind(o_, k + 4);
-              o_ << "const int64_t " << modFullName << " = (" << modPeriodName << " > 0) ? (" << modIterName << " / "
-                 << modPeriodName << ") : 0;\n";
-              ind(o_, k + 4);
-              o_ << "const int64_t " << modRemName << " = (" << modPeriodName << " > 0) ? (" << modIterName << " - ("
-                 << modFullName << " * " << modPeriodName << ")) : " << modIterName << ";\n";
-              ind(o_, k + 4);
-              o_ << "if (" << modFullName << " >= 2) {\n";
-              ind(o_, k + 5);
-              o_ << "const int64_t " << modStartName << " = " << modCurName << ";\n";
-              ind(o_, k + 5);
-              o_ << "LS_I128 " << modCycleName << " = 0;\n";
-              ind(o_, k + 5);
-              o_ << "for (int64_t " << modKName << " = 0; " << modKName << " < " << modPeriodName << "; ++" << modKName
-                 << ") {\n";
-              ind(o_, k + 6);
-              o_ << modCycleName << " += (LS_I128)" << modCurName << ";\n";
-              ind(o_, k + 6);
-              o_ << modCurName << " += " << modDeltaName << ";\n";
-              ind(o_, k + 6);
-              o_ << "if (" << modCurName << " >= " << modMName << ") " << modCurName << " -= " << modMName << ";\n";
-              ind(o_, k + 5);
-              o_ << "}\n";
-              ind(o_, k + 5);
-              o_ << "LS_I128 " << modTailName << " = 0;\n";
-              ind(o_, k + 5);
-              o_ << modCurName << " = " << modStartName << ";\n";
-              ind(o_, k + 5);
-              o_ << "for (int64_t " << modKName << " = 0; " << modKName << " < " << modRemName << "; ++" << modKName
-                 << ") {\n";
-              ind(o_, k + 6);
-              o_ << modTailName << " += (LS_I128)" << modCurName << ";\n";
-              ind(o_, k + 6);
-              o_ << modCurName << " += " << modDeltaName << ";\n";
-              ind(o_, k + 6);
-              o_ << "if (" << modCurName << " >= " << modMName << ") " << modCurName << " -= " << modMName << ";\n";
-              ind(o_, k + 5);
-              o_ << "}\n";
-              ind(o_, k + 5);
-              o_ << redName << " = (__typeof__(" << redName << "))((LS_I128)" << redName << " + ((LS_I128)"
-                 << modFullName << " * " << modCycleName << ") + " << modTailName << ");\n";
-              ind(o_, k + 4);
-              o_ << "} else {\n";
-              ind(o_, k + 5);
-              o_ << "for (int64_t " << modKName << " = 0; " << modKName << " < " << modIterName << "; ++" << modKName
-                 << ") {\n";
-              ind(o_, k + 6);
-              o_ << redName << " += " << modCurName << ";\n";
-              ind(o_, k + 6);
-              o_ << modCurName << " += " << modDeltaName << ";\n";
-              ind(o_, k + 6);
-              o_ << "if (" << modCurName << " >= " << modMName << ") " << modCurName << " -= " << modMName << ";\n";
-              ind(o_, k + 5);
-              o_ << "}\n";
-              ind(o_, k + 4);
-              o_ << "}\n";
-              ind(o_, k + 3);
-              o_ << "}\n";
+              o_ << redName << " = (__typeof__(" << redName << "))((LS_I128)" << redName
+                 << " + ls_sum_mod_linear_i128(" << modIterName << ", " << modMName << ", " << modDeltaName << ", "
+                 << modCurName << "));\n";
               ind(o_, k + 2);
               o_ << "}\n";
               ind(o_, k + 2);
@@ -7876,10 +8210,11 @@ static std::string flagsForAsmLink(const std::string &flags) {
 }
 
 static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, bool hasParallelFor,
-                  bool hasWinGraphicsDep, bool ultraMinimalRuntime, bool hasInteractiveInput) {
+                  bool hasWinGraphicsDep, bool hasWinNetDep, bool ultraMinimalRuntime, bool hasInteractiveInput) {
 #if !defined(_WIN32)
   (void)ultraMinimalRuntime;
   (void)hasInteractiveInput;
+  (void)hasWinNetDep;
 #endif
   const std::filesystem::path primaryIn = o.inputs.front();
   if (!o.build) {
@@ -8002,6 +8337,9 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
 #if defined(_WIN32)
   if (hasWinGraphicsDep) {
     winLinkFlags = msvcLike ? " user32.lib gdi32.lib" : " -luser32 -lgdi32";
+  }
+  if (hasWinNetDep) {
+    winLinkFlags += msvcLike ? " ws2_32.lib" : " -lws2_32";
   }
   const bool speedGuiMode = o.maxSpeed && !hasInteractiveInput && !ultraMinimalRuntime;
   if (cleanOutputMode || speedGuiMode) {
@@ -8138,11 +8476,20 @@ int main(int argc, char **argv) {
     const bool cleanOutputMode = ls::hasFormatMarkerProgram(p);
     const bool hasParallelFor = ls::hasParallelForProgram(p);
     const bool hasWinGraphicsDep = ls::hasWinGraphicsDepProgram(p);
+    const bool hasWinNetDep = ls::hasCallNamedProgram(p, "http_server_listen") ||
+                              ls::hasCallNamedProgram(p, "http_server_accept") ||
+                              ls::hasCallNamedProgram(p, "http_server_read") ||
+                              ls::hasCallNamedProgram(p, "http_server_respond_text") ||
+                              ls::hasCallNamedProgram(p, "http_server_close") ||
+                              ls::hasCallNamedProgram(p, "http_client_connect") ||
+                              ls::hasCallNamedProgram(p, "http_client_send") ||
+                              ls::hasCallNamedProgram(p, "http_client_read") ||
+                              ls::hasCallNamedProgram(p, "http_client_close");
     const bool ultraMinimalRuntime = ec.ultraMinimalRuntime();
     const bool hasInteractiveInput = ls::hasCallNamedProgram(p, "input") || ls::hasCallNamedProgram(p, "input_i64") ||
                                      ls::hasCallNamedProgram(p, "input_f64");
     const std::string cOut = ec.run();
-    return ls::finish(o, cOut, cleanOutputMode, hasParallelFor, hasWinGraphicsDep, ultraMinimalRuntime,
+    return ls::finish(o, cOut, cleanOutputMode, hasParallelFor, hasWinGraphicsDep, hasWinNetDep, ultraMinimalRuntime,
                       hasInteractiveInput);
   } catch (const ls::CompileError &e) {
     if (!currentFile.empty()) {
