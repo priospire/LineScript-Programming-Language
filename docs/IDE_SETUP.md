@@ -8,6 +8,10 @@ This guide shows exactly how to start a fresh LineScript project in VS Code and 
 - `linescript.cmd` and `linescript.ps1`
 - a backend C compiler in `PATH` (`clang` recommended, `gcc` supported)
 
+Linux:
+- build `lsc` from `src/lsc.cpp`
+- run `./lsc ./main.lsc --max-speed --cc clang` (or `--cc gcc`)
+
 ## 2. Fresh Project From `dist` (Copy-Paste Ready)
 
 1. Extract `dist\LineScript-win64-<date>.zip`.
@@ -20,6 +24,12 @@ This guide shows exactly how to start a fresh LineScript project in VS Code and 
 ```
 
 This works without `src/lsc.cpp` because the packaged `lsc.exe` is already included.
+
+Linux equivalent:
+
+```bash
+./lsc ./main.lsc --max-speed --cc clang
+```
 
 ## 3. Fresh Project (Any Editor)
 
@@ -34,6 +44,7 @@ cd MyLineScriptApp
 - `lsc.exe`
 - `linescript.cmd`
 - `linescript.ps1`
+- `linescript.sh` (Linux/macOS)
 
 3. Create `main.lsc`:
 
@@ -51,6 +62,12 @@ end
 
 ```powershell
 .\linescript.cmd .\main.lsc --max-speed --cc clang
+```
+
+Linux/macOS:
+
+```bash
+./linescript.sh ./main.lsc --max-speed --cc clang
 ```
 
 5. Check syntax/types only:
@@ -94,6 +111,12 @@ Use the same command in a Run/External Tool configuration:
 
 ```text
 .\linescript.cmd .\main.lsc --max-speed --cc clang
+```
+
+Linux equivalent:
+
+```text
+./lsc ./main.lsc --max-speed --cc clang
 ```
 
 For validation-only builds:

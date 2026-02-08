@@ -10,11 +10,18 @@ Fastest workflow on Windows:
 .\linescript.cmd your_file.lsc --max-speed --cc clang
 ```
 
+Linux/macOS equivalent:
+
+```bash
+./lsc your_file.lsc --run --max-speed --cc clang
+```
+
 Performance note:
 - treat `--max-speed` as the standard release mode.
 - use non-`--max-speed` builds mainly for debugging.
 - backend defaults to `--backend auto` (x86 asm-first, then C++/C fallback).
 - on Windows, `--max-speed` can use an ultra-minimal backend path for eligible programs to reduce startup overhead.
+- on Linux, threading-enabled builds (`spawn`/`await`) automatically link with `-pthread`.
 
 Behavior:
 - auto-builds `lsc.exe` when needed
@@ -570,6 +577,12 @@ Run the full regression suite:
 powershell -ExecutionPolicy Bypass -File .\tests\run_tests.ps1
 ```
 
+Linux/macOS:
+
+```bash
+bash ./tests/run_tests.sh
+```
+
 It validates:
 - deterministic runtime outputs
 - expected compile failures and diagnostics
@@ -579,6 +592,12 @@ Run deterministic stress workloads:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tests\run_stress_tests.ps1
+```
+
+Linux/macOS:
+
+```bash
+bash ./tests/run_stress_tests.sh
 ```
 
 ## 19. Fresh Project in VS Code / Other IDEs

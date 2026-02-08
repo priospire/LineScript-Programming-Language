@@ -6,7 +6,9 @@ Design goals:
 - `#1` runtime speed
 - `#2` power, modularity, and clean syntax
 
-LineScript compiles to optimized C, then to native code through `clang` or `gcc`.
+LineScript supports two native backends:
+- custom x86 ASM backend (`--backend asm`, or `--backend auto` to prefer ASM first)
+- optimized C backend (`--backend c`)
 
 ## Quick Start
 
@@ -14,6 +16,12 @@ Build and run a program in one command:
 
 ```powershell
 .\linescript.cmd examples\benchmark.lsc --max-speed --cc clang
+```
+
+Linux/macOS:
+
+```bash
+./linescript.sh examples/benchmark.lsc --max-speed --cc clang
 ```
 
 Release rule:
@@ -25,6 +33,13 @@ Compile multiple modules together:
 ```powershell
 .\linescript.cmd examples\module_math.lsc examples\module_main.lsc --max-speed --cc clang
 ```
+
+Linux notes:
+- LineScript compiler/runtime is supported on Linux with `clang` or `gcc`.
+- spawn/await threading links with `-pthread` automatically when needed.
+- built-in HTTP server/client works on Linux.
+- game/window key polling is currently native on Windows; on Linux game APIs run in safe headless mode.
+- use `linescript.sh` and `*.sh` test/package scripts (no PowerShell dependency required).
 
 ## Core Syntax
 
@@ -323,7 +338,7 @@ Options:
 - `--check` parse/type-check/optimize only (no code generation)
 - `--build` compile to native binary
 - `--run` build and execute binary
-- `--cc <name>` select backend C compiler command
+- `--cc <name>` select native toolchain compiler command used by backend pipelines
 - `--backend <x>` select backend mode: `auto` (asm-first), `c`, `asm`
 - `--passes <n>` greedy optimizer passes
 - `--max-speed` strongest speed profile (recommended default for release/perf)
@@ -332,8 +347,9 @@ Options:
 
 ## Speed Features
 
-- AOT pipeline: LineScript -> optimized C -> native binary
-- x86 backend mode (`--backend asm`) with automatic C++ then C fallback
+- AOT pipeline (ASM path): LineScript -> optimized C -> x86 ASM -> native binary
+- AOT pipeline (C path): LineScript -> optimized C -> native binary
+- custom x86 backend mode (`--backend asm`) with automatic C++ then C fallback
 - no mandatory VM and no GC runtime
 - greedy multi-pass optimizer (constant folding, DCE, branch/loop simplification, inlining)
 - constant small-trip loop unrolling in optimizer
@@ -392,6 +408,12 @@ PowerShell packager:
 powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1
 ```
 
+Bash packager (Linux/macOS):
+
+```bash
+bash ./scripts/package.sh
+```
+
 This produces a distributable ZIP with:
 - `lsc.exe`
 - `linescript.cmd` / `linescript.ps1`
@@ -420,10 +442,22 @@ Run the deterministic test suite:
 powershell -ExecutionPolicy Bypass -File .\tests\run_tests.ps1
 ```
 
+Linux/macOS:
+
+```bash
+bash ./tests/run_tests.sh
+```
+
 Run deterministic stress tests:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tests\run_stress_tests.ps1
+```
+
+Linux/macOS:
+
+```bash
+bash ./tests/run_stress_tests.sh
 ```
 
 What it covers:

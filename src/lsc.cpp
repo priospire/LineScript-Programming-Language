@@ -6067,6 +6067,8 @@ private:
     o_ << "  BITMAPINFO bmi;\n";
     o_ << "  LARGE_INTEGER freq;\n";
     o_ << "  LARGE_INTEGER last;\n";
+    o_ << "#else\n";
+    o_ << "  struct timespec last_ts;\n";
     o_ << "#endif\n";
     o_ << "} ls_game;\n";
     o_ << "static ls_game ls_games[LS_MAX_GAME];\n";
@@ -6196,6 +6198,7 @@ private:
     o_ << "#else\n";
     o_ << "  (void)title;\n";
     o_ << "  g->headless = 1;\n";
+    o_ << "  timespec_get(&g->last_ts, TIME_UTC);\n";
     o_ << "#endif\n";
     o_ << "  return id;\n";
     o_ << "}\n";
@@ -6303,7 +6306,20 @@ private:
     o_ << "  }\n";
     o_ << "  g->last = now;\n";
     o_ << "#else\n";
-    o_ << "  g->dt = 1.0 / 60.0;\n";
+    o_ << "  struct timespec now;\n";
+    o_ << "  timespec_get(&now, TIME_UTC);\n";
+    o_ << "  int64_t ds = (int64_t)now.tv_sec - (int64_t)g->last_ts.tv_sec;\n";
+    o_ << "  int64_t dn = (int64_t)now.tv_nsec - (int64_t)g->last_ts.tv_nsec;\n";
+    o_ << "  if (dn < 0) {\n";
+    o_ << "    dn += 1000000000LL;\n";
+    o_ << "    ds -= 1;\n";
+    o_ << "  }\n";
+    o_ << "  if (ds < 0) {\n";
+    o_ << "    ds = 0;\n";
+    o_ << "    dn = 0;\n";
+    o_ << "  }\n";
+    o_ << "  g->dt = (double)ds + ((double)dn / 1000000000.0);\n";
+    o_ << "  g->last_ts = now;\n";
     o_ << "#endif\n";
     o_ << "  if (!isfinite(g->dt) || g->dt < 0.0) g->dt = 0.0;\n";
     o_ << "  if (g->dt > 0.25) g->dt = 0.25;\n";
@@ -6899,13 +6915,27 @@ private:
       o_ << "  }\n";
       o_ << "  return -1;\n";
       o_ << "}\n";
+      o_ << "#if defined(_WIN32)\n";
+      o_ << "static inline int ls_http_send_chunk(ls_http_socket sock, const char *data, int chunk) {\n";
+      o_ << "  return (int)send(sock, data, chunk, 0);\n";
+      o_ << "}\n";
+      o_ << "#else\n";
+      o_ << "#if defined(MSG_NOSIGNAL)\n";
+      o_ << "#define LS_HTTP_SEND_FLAGS MSG_NOSIGNAL\n";
+      o_ << "#else\n";
+      o_ << "#define LS_HTTP_SEND_FLAGS 0\n";
+      o_ << "#endif\n";
+      o_ << "static inline int ls_http_send_chunk(ls_http_socket sock, const char *data, int chunk) {\n";
+      o_ << "  return (int)send(sock, data, chunk, LS_HTTP_SEND_FLAGS);\n";
+      o_ << "}\n";
+      o_ << "#endif\n";
       o_ << "static inline ls_bool ls_http_send_all(ls_http_socket sock, const char *data, size_t len) {\n";
       o_ << "  if (!data || len == 0) return 1;\n";
       o_ << "  size_t off = 0;\n";
       o_ << "  while (off < len) {\n";
       o_ << "    const size_t left = len - off;\n";
       o_ << "    const int chunk = (left > 2147483647u) ? 2147483647 : (int)left;\n";
-      o_ << "    const int sent = (int)send(sock, data + off, chunk, 0);\n";
+      o_ << "    const int sent = ls_http_send_chunk(sock, data + off, chunk);\n";
       o_ << "    if (sent <= 0) return 0;\n";
       o_ << "    off += (size_t)sent;\n";
       o_ << "  }\n";
@@ -8210,11 +8240,16 @@ static std::string flagsForAsmLink(const std::string &flags) {
 }
 
 static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, bool hasParallelFor,
-                  bool hasWinGraphicsDep, bool hasWinNetDep, bool ultraMinimalRuntime, bool hasInteractiveInput) {
+                  bool hasWinGraphicsDep, bool hasWinNetDep, bool hasPosixThreadDep, bool ultraMinimalRuntime,
+                  bool hasInteractiveInput) {
+#if defined(_WIN32)
+  (void)hasPosixThreadDep;
+#endif
 #if !defined(_WIN32)
   (void)ultraMinimalRuntime;
   (void)hasInteractiveInput;
   (void)hasWinNetDep;
+  (void)hasWinGraphicsDep;
 #endif
   const std::filesystem::path primaryIn = o.inputs.front();
   if (!o.build) {
@@ -8334,6 +8369,7 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   std::string winLinkFlags;
   std::string winGuiFlags;
   std::string winOptLinkFlags;
+  std::string posixLinkFlags;
 #if defined(_WIN32)
   if (hasWinGraphicsDep) {
     winLinkFlags = msvcLike ? " user32.lib gdi32.lib" : " -luser32 -lgdi32";
@@ -8352,6 +8388,10 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   if (o.maxSpeed && (clangLike || gccLike)) {
     winOptLinkFlags = " -Wl,/OPT:REF -Wl,/OPT:ICF";
   }
+#else
+  if (hasPosixThreadDep) {
+    posixLinkFlags = " -pthread";
+  }
 #endif
 
   const std::string backendNorm = lowerCopy(stripOuterQuotes(o.backend));
@@ -8365,6 +8405,8 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   std::string linkSuffix;
 #if defined(_WIN32)
   linkSuffix = winLinkFlags + winOptLinkFlags + winGuiFlags;
+#else
+  linkSuffix = posixLinkFlags;
 #endif
 
   int rc = 1;
@@ -8485,12 +8527,14 @@ int main(int argc, char **argv) {
                               ls::hasCallNamedProgram(p, "http_client_send") ||
                               ls::hasCallNamedProgram(p, "http_client_read") ||
                               ls::hasCallNamedProgram(p, "http_client_close");
+    const bool hasPosixThreadDep = ls::hasCallNamedProgram(p, "spawn") || ls::hasCallNamedProgram(p, "await") ||
+                                   ls::hasCallNamedProgram(p, "await_all");
     const bool ultraMinimalRuntime = ec.ultraMinimalRuntime();
     const bool hasInteractiveInput = ls::hasCallNamedProgram(p, "input") || ls::hasCallNamedProgram(p, "input_i64") ||
                                      ls::hasCallNamedProgram(p, "input_f64");
     const std::string cOut = ec.run();
-    return ls::finish(o, cOut, cleanOutputMode, hasParallelFor, hasWinGraphicsDep, hasWinNetDep, ultraMinimalRuntime,
-                      hasInteractiveInput);
+    return ls::finish(o, cOut, cleanOutputMode, hasParallelFor, hasWinGraphicsDep, hasWinNetDep, hasPosixThreadDep,
+                      ultraMinimalRuntime, hasInteractiveInput);
   } catch (const ls::CompileError &e) {
     if (!currentFile.empty()) {
       std::cerr << "LineScript error (" << currentFile << "): " << e.what() << '\n';

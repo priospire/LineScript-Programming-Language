@@ -61,6 +61,7 @@ Notes:
 - `http_server_read` and `http_client_read` read one chunk (up to 16KB).
 - `http_server_respond_text` sends an HTTP/1.1 plain-text response.
 - on Windows, `ws2_32` is linked automatically when these APIs are used.
+- on Linux, send-path uses no-SIGPIPE behavior for stable socket writes.
 
 Example:
 
@@ -330,6 +331,7 @@ game_checksum(game: i64) -> i64
 Notes:
 - `game_new(..., visible=false)` is deterministic headless mode for tests/CI.
 - `game_new(..., visible=true)` opens a native window on Windows.
+- on Linux and non-Windows targets, game runtime is currently headless-safe by default.
 - use `game_begin`/`game_end` once per frame.
 - `game_set_fixed_dt` forces deterministic frame delta.
 - `game_set_target_fps(0)` disables frame sleep throttling.
