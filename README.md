@@ -166,6 +166,40 @@ println(FormatOutput(3.5))
 println(formatOutput("x"))
 ```
 
+Deterministic owned handles (scope-exit cleanup, no GC):
+
+```linescript
+main() -> i64 do
+  declare owned d = dict_new()
+  dict_set(d, "name", "LineScript")
+  println(dict_get(d, "name"))
+  return 0
+end
+```
+
+Explicit throw contracts:
+
+```linescript
+load() -> i64 throws IOError do
+  return 1
+end
+
+main() -> i64 throws IOError do
+  return load()
+end
+```
+
+Option/Result enum-style handles:
+
+```linescript
+declare o = option_some("hello")
+declare r = result_err("IOError", "missing file")
+println(option_unwrap_or(o, "fallback"))
+println(result_error_type(r))
+option_free(o)
+result_free(r)
+```
+
 Format whole output blocks with optional end suffix:
 
 ```linescript

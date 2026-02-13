@@ -61,6 +61,7 @@ enum class TokenKind {
   KwVar,
   KwConst,
   KwDeclare,
+  KwOwned,
   KwReturn,
   KwIf,
   KwUnless,
@@ -73,6 +74,7 @@ enum class TokenKind {
   KwStep,
   KwDo,
   KwEnd,
+  KwThrows,
   KwBreak,
   KwContinue,
   KwTrue,
@@ -339,6 +341,7 @@ private:
     if (t == "var") return {TokenKind::KwVar, t, s};
     if (t == "const") return {TokenKind::KwConst, t, s};
     if (t == "declare") return {TokenKind::KwDeclare, t, s};
+    if (t == "owned") return {TokenKind::KwOwned, t, s};
     if (t == "return") return {TokenKind::KwReturn, t, s};
     if (t == "if") return {TokenKind::KwIf, t, s};
     if (t == "unless") return {TokenKind::KwUnless, t, s};
@@ -351,6 +354,7 @@ private:
     if (t == "step") return {TokenKind::KwStep, t, s};
     if (t == "do") return {TokenKind::KwDo, t, s};
     if (t == "end") return {TokenKind::KwEnd, t, s};
+    if (t == "throws") return {TokenKind::KwThrows, t, s};
     if (t == "break") return {TokenKind::KwBreak, t, s};
     if (t == "continue") return {TokenKind::KwContinue, t, s};
     if (t == "and") return {TokenKind::AndAnd, t, s};
@@ -499,11 +503,13 @@ struct SLet : Stmt {
   std::string n;
   std::optional<Type> decl;
   bool isConst = false;
+  bool isOwned = false;
+  std::string ownedFreeFn;
   Type inf = Type::I64;
   bool typed = false;
   EP v;
-  SLet(std::string nIn, std::optional<Type> d, bool isConstIn, EP vIn, Span s)
-      : Stmt(SK::Let, s), n(std::move(nIn)), decl(d), isConst(isConstIn), v(std::move(vIn)) {}
+  SLet(std::string nIn, std::optional<Type> d, bool isConstIn, bool isOwnedIn, EP vIn, Span s)
+      : Stmt(SK::Let, s), n(std::move(nIn)), decl(d), isConst(isConstIn), isOwned(isOwnedIn), v(std::move(vIn)) {}
 };
 struct SAssign : Stmt {
   std::string n;
@@ -563,6 +569,7 @@ struct Fn {
   bool inl = false;
   std::vector<Param> p;
   Type ret = Type::Void;
+  std::vector<std::string> throws;
   std::vector<SP> b;
   Span s;
 };
@@ -693,6 +700,13 @@ private:
     }
     need(TokenKind::RPar, "expected ')'");
     if (eat(TokenKind::Arrow)) f.ret = parseType();
+    if (eat(TokenKind::KwThrows)) {
+      while (true) {
+        Token errTok = need(TokenKind::Id, "expected error type after 'throws'");
+        f.throws.push_back(errTok.text);
+        if (!eat(TokenKind::Comma)) break;
+      }
+    }
     if (f.ex) {
       needStmtEnd("expected statement terminator after extern function");
       return f;
@@ -828,7 +842,20 @@ private:
 
   SP sDeclare() {
     bool isConst = false;
-    if (eat(TokenKind::KwConst)) isConst = true;
+    bool isOwned = false;
+    while (true) {
+      if (eat(TokenKind::KwConst)) {
+        if (isConst) throw CompileError(cur().span, "duplicate 'const' in declaration");
+        isConst = true;
+        continue;
+      }
+      if (eat(TokenKind::KwOwned)) {
+        if (isOwned) throw CompileError(cur().span, "duplicate 'owned' in declaration");
+        isOwned = true;
+        continue;
+      }
+      break;
+    }
     Token n = need(TokenKind::Id, "expected variable name");
     std::optional<Type> d;
     if (eat(TokenKind::Colon)) d = parseType();
@@ -845,7 +872,7 @@ private:
       }
     }
     needStmtEnd("expected statement terminator after variable declaration");
-    return std::make_unique<SLet>(n.text, d, isConst, std::move(v), n.span);
+    return std::make_unique<SLet>(n.text, d, isConst, isOwned, std::move(v), n.span);
   }
 
   SP sAssign() {
@@ -1146,6 +1173,7 @@ private:
 struct Sig {
   std::vector<Type> p;
   Type r = Type::Void;
+  std::vector<std::string> throws;
 };
 
 class TypeCheck {
@@ -1165,6 +1193,8 @@ private:
   struct Local {
     Type t = Type::I64;
     bool isConst = false;
+    bool isOwned = false;
+    std::string ownedFreeFn;
   };
 
   static bool can(Type a, Type b) { return a == b || (a == Type::I64 && b == Type::F64); }
@@ -1246,11 +1276,13 @@ private:
     if (!ok) throw CompileError(s, m);
   }
 
-  void addSig(const std::string &name, const std::vector<Type> &params, Type ret, const Span &s) {
+  void addSig(const std::string &name, const std::vector<Type> &params, Type ret, const Span &s,
+              std::vector<std::string> throws = {}) {
     if (sig_.count(name)) throw CompileError(s, "duplicate function '" + name + "'");
     Sig sg;
     sg.p = params;
     sg.r = ret;
+    sg.throws = std::move(throws);
     sig_[name] = std::move(sg);
   }
 
@@ -1341,6 +1373,22 @@ private:
     addSig("object_get", {Type::I64, Type::Str}, Type::Str, s);
     addSig("object_has", {Type::I64, Type::Str}, Type::Bool, s);
     addSig("object_remove", {Type::I64, Type::Str}, Type::Void, s);
+    addSig("option_some", {Type::Str}, Type::I64, s);
+    addSig("option_none", {}, Type::I64, s);
+    addSig("option_is_some", {Type::I64}, Type::Bool, s);
+    addSig("option_is_none", {Type::I64}, Type::Bool, s);
+    addSig("option_unwrap", {Type::I64}, Type::Str, s);
+    addSig("option_unwrap_or", {Type::I64, Type::Str}, Type::Str, s);
+    addSig("option_free", {Type::I64}, Type::Void, s);
+    addSig("result_ok", {Type::Str}, Type::I64, s);
+    addSig("result_err", {Type::Str, Type::Str}, Type::I64, s);
+    addSig("result_is_ok", {Type::I64}, Type::Bool, s);
+    addSig("result_is_err", {Type::I64}, Type::Bool, s);
+    addSig("result_value", {Type::I64}, Type::Str, s);
+    addSig("result_error_type", {Type::I64}, Type::Str, s);
+    addSig("result_error_message", {Type::I64}, Type::Str, s);
+    addSig("result_unwrap_or", {Type::I64, Type::Str}, Type::Str, s);
+    addSig("result_free", {Type::I64}, Type::Void, s);
     addSig("gfx_new", {Type::I64, Type::I64}, Type::I64, s);
     addSig("gfx_free", {Type::I64}, Type::Void, s);
     addSig("gfx_width", {Type::I64}, Type::I64, s);
@@ -1503,45 +1551,77 @@ private:
     for (const Fn &f : p_.f) {
       std::vector<Type> params;
       for (const Param &p : f.p) params.push_back(p.t);
-      addSig(f.n, params, f.ret, f.s);
+      addSig(f.n, params, f.ret, f.s, f.throws);
     }
   }
 
   void fn(Fn &f) {
     std::unordered_map<std::string, Local> l;
+    std::unordered_set<std::string> throwsAllowed;
+    throwsAllowed.reserve(f.throws.size());
+    for (const std::string &e : f.throws) throwsAllowed.insert(e);
     for (const Param &p : f.p) {
       if (l.count(p.n)) throw CompileError(f.s, "duplicate parameter '" + p.n + "'");
-      l[p.n] = Local{p.t, false};
+      l[p.n] = Local{p.t, false, false, ""};
     }
-    block(f.b, l, f.ret, 0);
+    block(f.b, l, f.ret, 0, throwsAllowed);
   }
 
-  void block(std::vector<SP> &b, std::unordered_map<std::string, Local> l, Type ret, int loopDepth) {
-    for (SP &s : b) stmt(*s, l, ret, loopDepth);
+  void block(std::vector<SP> &b, std::unordered_map<std::string, Local> l, Type ret, int loopDepth,
+             const std::unordered_set<std::string> &throwsAllowed) {
+    for (SP &s : b) stmt(*s, l, ret, loopDepth, throwsAllowed);
   }
 
-  void stmt(Stmt &s, std::unordered_map<std::string, Local> &l, Type ret, int loopDepth) {
+  static std::string ownedFreeFnForCtor(const Expr &initExpr) {
+    if (initExpr.k != EK::Call) return "";
+    const auto &c = static_cast<const ECall &>(initExpr);
+    if (c.f == "array_new") return "array_free";
+    if (c.f == "dict_new") return "dict_free";
+    if (c.f == "map_new") return "map_free";
+    if (c.f == "object_new") return "object_free";
+    if (c.f == "np_new" || c.f == "np_copy" || c.f == "np_from_range" || c.f == "np_linspace") return "np_free";
+    if (c.f == "gfx_new" || c.f == "pg_surface_new") return "gfx_free";
+    if (c.f == "game_new" || c.f == "pg_init") return "game_free";
+    if (c.f == "phys_new") return "phys_free";
+    if (c.f == "http_server_listen") return "http_server_close";
+    if (c.f == "http_client_connect") return "http_client_close";
+    if (c.f == "result_ok" || c.f == "result_err") return "result_free";
+    if (c.f == "option_some" || c.f == "option_none") return "option_free";
+    return "";
+  }
+
+  void stmt(Stmt &s, std::unordered_map<std::string, Local> &l, Type ret, int loopDepth,
+            const std::unordered_set<std::string> &throwsAllowed) {
     switch (s.k) {
     case SK::Let: {
       auto &n = static_cast<SLet &>(s);
       req(!l.count(n.n), s.s, "variable '" + n.n + "' already declared");
-      Type vt = expr(*n.v, l), ft = n.decl.has_value() ? *n.decl : vt;
+      Type vt = expr(*n.v, l, throwsAllowed), ft = n.decl.has_value() ? *n.decl : vt;
       req(can(vt, ft), s.s, "cannot convert '" + typeName(vt) + "' to '" + typeName(ft) + "'");
+      if (n.isOwned) {
+        req(loopDepth == 0, s.s, "declare owned is not allowed inside loops");
+        req(ft == Type::I64, s.s, "declare owned requires i64 handle type");
+        n.ownedFreeFn = ownedFreeFnForCtor(*n.v);
+        req(!n.ownedFreeFn.empty(), s.s,
+            "declare owned requires constructor call that has a matching free function");
+      }
       n.inf = ft;
       n.typed = true;
-      l[n.n] = Local{ft, n.isConst};
+      l[n.n] = Local{ft, n.isConst, n.isOwned, n.ownedFreeFn};
       return;
     }
     case SK::Assign: {
       auto &n = static_cast<SAssign &>(s);
       req(l.count(n.n), s.s, "assignment to undeclared variable '" + n.n + "'");
-      Type vt = expr(*n.v, l);
+      Type vt = expr(*n.v, l, throwsAllowed);
       req(!l[n.n].isConst, s.s, "cannot assign to const variable '" + n.n + "'");
+      req(!l[n.n].isOwned, s.s,
+          "cannot assign to owned handle '" + n.n + "'; release explicitly and declare a new owned handle");
       req(can(vt, l[n.n].t), s.s, "cannot assign '" + typeName(vt) + "' to '" + typeName(l[n.n].t) + "'");
       return;
     }
     case SK::Expr: {
-      (void)expr(*static_cast<SExpr &>(s).e, l);
+      (void)expr(*static_cast<SExpr &>(s).e, l, throwsAllowed);
       return;
     }
     case SK::Ret: {
@@ -1550,28 +1630,35 @@ private:
         req(ret == Type::Void, s.s, "missing return value");
         return;
       }
-      Type vt = expr(*n.v, l);
+      if (n.v && n.v->k == EK::Var) {
+        const auto &rv = static_cast<const EVar &>(*n.v);
+        auto it = l.find(rv.n);
+        if (it != l.end() && it->second.isOwned) {
+          throw CompileError(s.s, "cannot return owned handle variable '" + rv.n + "'");
+        }
+      }
+      Type vt = expr(*n.v, l, throwsAllowed);
       req(can(vt, ret), s.s, "cannot return '" + typeName(vt) + "' from '" + typeName(ret) + "'");
       return;
     }
     case SK::If: {
       auto &n = static_cast<SIf &>(s);
-      req(expr(*n.c, l) == Type::Bool, s.s, "if condition must be bool");
-      block(n.t, l, ret, loopDepth);
-      block(n.e, l, ret, loopDepth);
+      req(expr(*n.c, l, throwsAllowed) == Type::Bool, s.s, "if condition must be bool");
+      block(n.t, l, ret, loopDepth, throwsAllowed);
+      block(n.e, l, ret, loopDepth, throwsAllowed);
       return;
     }
     case SK::While: {
       auto &n = static_cast<SWhile &>(s);
-      req(expr(*n.c, l) == Type::Bool, s.s, "while condition must be bool");
-      block(n.b, l, ret, loopDepth + 1);
+      req(expr(*n.c, l, throwsAllowed) == Type::Bool, s.s, "while condition must be bool");
+      block(n.b, l, ret, loopDepth + 1, throwsAllowed);
       return;
     }
     case SK::For: {
       auto &n = static_cast<SFor &>(s);
-      Type st = expr(*n.start, l);
-      Type en = expr(*n.stop, l);
-      Type sp = expr(*n.step, l);
+      Type st = expr(*n.start, l, throwsAllowed);
+      Type en = expr(*n.stop, l, throwsAllowed);
+      Type sp = expr(*n.step, l, throwsAllowed);
       req(st == Type::I64, s.s, "for range start must be i64");
       req(en == Type::I64, s.s, "for range stop must be i64");
       req(sp == Type::I64, s.s, "for range step must be i64");
@@ -1591,17 +1678,17 @@ private:
         }
       }
       auto inner = l;
-      inner[n.n] = Local{Type::I64, false};
-      block(n.b, inner, ret, loopDepth + 1);
+      inner[n.n] = Local{Type::I64, false, false, ""};
+      block(n.b, inner, ret, loopDepth + 1, throwsAllowed);
       return;
     }
     case SK::FormatBlock: {
       auto &n = static_cast<SFormatBlock &>(s);
       if (n.endArg) {
-        Type et = expr(*n.endArg, l);
+        Type et = expr(*n.endArg, l, throwsAllowed);
         req(et == Type::Str, s.s, "formatOutput block end argument must be str");
       }
-      block(n.b, l, ret, loopDepth);
+      block(n.b, l, ret, loopDepth, throwsAllowed);
       return;
     }
     case SK::Break: {
@@ -1615,7 +1702,8 @@ private:
     }
   }
 
-  Type expr(Expr &e, const std::unordered_map<std::string, Local> &l) {
+  Type expr(Expr &e, const std::unordered_map<std::string, Local> &l,
+            const std::unordered_set<std::string> &throwsAllowed) {
     auto mark = [&](Type t) -> Type {
       e.inf = t;
       e.typed = true;
@@ -1634,7 +1722,7 @@ private:
     }
     case EK::Unary: {
       auto &n = static_cast<EUnary &>(e);
-      Type t = expr(*n.x, l);
+      Type t = expr(*n.x, l, throwsAllowed);
       if (n.op == UK::Neg) {
         if (!isNum(t)) throw CompileError(e.s, "unary '-' requires numeric");
         return mark(t);
@@ -1644,7 +1732,7 @@ private:
     }
     case EK::Binary: {
       auto &n = static_cast<EBinary &>(e);
-      Type a = expr(*n.l, l), b = expr(*n.r, l);
+      Type a = expr(*n.l, l, throwsAllowed), b = expr(*n.r, l, throwsAllowed);
       switch (n.op) {
       case BK::Add:
       case BK::Sub:
@@ -1684,7 +1772,7 @@ private:
       if (n.f == "input") {
         if (n.a.empty()) return mark(Type::Str);
         if (n.a.size() == 1) {
-          Type at = expr(*n.a[0], l);
+          Type at = expr(*n.a[0], l, throwsAllowed);
           if (at != Type::Str) {
             throw CompileError(n.a[0]->s, "arg 1 cannot convert '" + typeName(at) + "' to 'str'");
           }
@@ -1695,7 +1783,7 @@ private:
       if (n.f == "input_i64") {
         if (n.a.empty()) return mark(Type::I64);
         if (n.a.size() == 1) {
-          Type at = expr(*n.a[0], l);
+          Type at = expr(*n.a[0], l, throwsAllowed);
           if (at != Type::Str) {
             throw CompileError(n.a[0]->s, "arg 1 cannot convert '" + typeName(at) + "' to 'str'");
           }
@@ -1706,7 +1794,7 @@ private:
       if (n.f == "input_f64") {
         if (n.a.empty()) return mark(Type::F64);
         if (n.a.size() == 1) {
-          Type at = expr(*n.a[0], l);
+          Type at = expr(*n.a[0], l, throwsAllowed);
           if (at != Type::Str) {
             throw CompileError(n.a[0]->s, "arg 1 cannot convert '" + typeName(at) + "' to 'str'");
           }
@@ -1718,7 +1806,7 @@ private:
         if (n.a.size() != 1) {
           throw CompileError(e.s, "function '" + n.f + "' expects 1 arg");
         }
-        Type at = expr(*n.a[0], l);
+        Type at = expr(*n.a[0], l, throwsAllowed);
         if (!isPrintable(at)) {
           throw CompileError(n.a[0]->s, "arg 1 cannot print type '" + typeName(at) + "'");
         }
@@ -1728,7 +1816,7 @@ private:
         if (n.a.size() != 1) {
           throw CompileError(e.s, "function '" + n.f + "' expects 1 arg");
         }
-        Type at = expr(*n.a[0], l);
+        Type at = expr(*n.a[0], l, throwsAllowed);
         if (!isPrintable(at)) {
           throw CompileError(n.a[0]->s, "arg 1 cannot format type '" + typeName(at) + "'");
         }
@@ -1738,8 +1826,8 @@ private:
         if (n.a.size() != 2) {
           throw CompileError(e.s, "function '" + n.f + "' expects 2 args");
         }
-        Type a0 = expr(*n.a[0], l);
-        Type a1 = expr(*n.a[1], l);
+        Type a0 = expr(*n.a[0], l, throwsAllowed);
+        Type a1 = expr(*n.a[1], l, throwsAllowed);
         if (!isNum(a0) || !isNum(a1)) {
           throw CompileError(e.s, "function '" + n.f + "' requires numeric args");
         }
@@ -1749,7 +1837,7 @@ private:
         if (n.a.size() != 1) {
           throw CompileError(e.s, "function '" + n.f + "' expects 1 arg");
         }
-        Type a0 = expr(*n.a[0], l);
+        Type a0 = expr(*n.a[0], l, throwsAllowed);
         if (!isNum(a0)) {
           throw CompileError(e.s, "function '" + n.f + "' requires numeric args");
         }
@@ -1759,9 +1847,9 @@ private:
         if (n.a.size() != 3) {
           throw CompileError(e.s, "function '" + n.f + "' expects 3 args");
         }
-        Type a0 = expr(*n.a[0], l);
-        Type a1 = expr(*n.a[1], l);
-        Type a2 = expr(*n.a[2], l);
+        Type a0 = expr(*n.a[0], l, throwsAllowed);
+        Type a1 = expr(*n.a[1], l, throwsAllowed);
+        Type a2 = expr(*n.a[2], l, throwsAllowed);
         if (!isNum(a0) || !isNum(a1) || !isNum(a2)) {
           throw CompileError(e.s, "function '" + n.f + "' requires numeric args");
         }
@@ -1797,10 +1885,16 @@ private:
       auto it = sig_.find(n.f);
       if (it == sig_.end()) throw CompileError(e.s, "unknown function '" + n.f + "'");
       const Sig &sg = it->second;
+      for (const std::string &errName : sg.throws) {
+        if (!throwsAllowed.count(errName)) {
+          throw CompileError(e.s, "call to '" + n.f + "' may throw '" + errName +
+                                       "'; add 'throws " + errName + "' to the current function");
+        }
+      }
       if (sg.p.size() != n.a.size())
         throw CompileError(e.s, "function '" + n.f + "' expects " + std::to_string(sg.p.size()) + " args");
       for (std::size_t i = 0; i < n.a.size(); ++i) {
-        Type at = expr(*n.a[i], l), pt = sg.p[i];
+        Type at = expr(*n.a[i], l, throwsAllowed), pt = sg.p[i];
         if (!can(at, pt))
           throw CompileError(n.a[i]->s, "arg " + std::to_string(i + 1) + " cannot convert '" + typeName(at) +
                                           "' to '" + typeName(pt) + "'");
@@ -3006,7 +3100,8 @@ static SP substStmtVar(const Stmt &s, const std::string &var, int64_t value) {
   case SK::Let: {
     const auto &n = static_cast<const SLet &>(s);
     auto out =
-        std::make_unique<SLet>(n.n, n.decl, n.isConst, substVarWithI64(*n.v, var, value, s.s), s.s);
+        std::make_unique<SLet>(n.n, n.decl, n.isConst, n.isOwned, substVarWithI64(*n.v, var, value, s.s), s.s);
+    out->ownedFreeFn = n.ownedFreeFn;
     out->inf = n.inf;
     out->typed = n.typed;
     return out;
@@ -4167,7 +4262,52 @@ private:
   int loopSerial_ = 0;
   std::string stateSpeedVar_;
   Type activeFnRet_ = Type::Void;
+  struct CleanupItem {
+    std::string var;
+    std::string freeFn;
+  };
+  struct CleanupScope {
+    std::vector<CleanupItem> items;
+    bool loopBoundary = false;
+  };
+  std::vector<CleanupScope> cleanupScopes_;
   static constexpr const char *kEntryName = "__linescript_main";
+
+  void pushCleanupScope(bool loopBoundary = false) { cleanupScopes_.push_back(CleanupScope{{}, loopBoundary}); }
+
+  void popCleanupScope() {
+    if (!cleanupScopes_.empty()) cleanupScopes_.pop_back();
+  }
+
+  void registerOwned(const std::string &var, const std::string &freeFn) {
+    if (cleanupScopes_.empty() || freeFn.empty()) return;
+    cleanupScopes_.back().items.push_back(CleanupItem{var, freeFn});
+  }
+
+  void emitScopeCleanup(std::size_t scopeIndex, int indentLevel) {
+    if (scopeIndex >= cleanupScopes_.size()) return;
+    auto &items = cleanupScopes_[scopeIndex].items;
+    for (std::size_t i = items.size(); i-- > 0;) {
+      ind(o_, indentLevel);
+      o_ << items[i].freeFn << "(" << items[i].var << ");\n";
+    }
+  }
+
+  void emitCurrentScopeCleanup(int indentLevel) {
+    if (cleanupScopes_.empty()) return;
+    emitScopeCleanup(cleanupScopes_.size() - 1, indentLevel);
+  }
+
+  void emitCleanupForReturn(int indentLevel) {
+    for (std::size_t i = cleanupScopes_.size(); i-- > 0;) emitScopeCleanup(i, indentLevel);
+  }
+
+  void emitCleanupForLoopTransfer(int indentLevel) {
+    for (std::size_t i = cleanupScopes_.size(); i-- > 0;) {
+      emitScopeCleanup(i, indentLevel);
+      if (cleanupScopes_[i].loopBoundary) break;
+    }
+  }
 
   std::string cFnName(const std::string &n) const {
     if (entry_ && n == "main") return kEntryName;
@@ -5342,6 +5482,17 @@ private:
     o_ << "} ls_array;\n";
     o_ << "static ls_array ls_arrays[LS_MAX_ARRAYS];\n";
     o_ << "static int64_t ls_array_count = 0;\n";
+    o_ << "static int64_t ls_array_free_ids[LS_MAX_ARRAYS];\n";
+    o_ << "static int64_t ls_array_free_top = 0;\n";
+    o_ << "static inline int64_t ls_array_alloc_id(void) {\n";
+    o_ << "  if (ls_array_free_top > 0) return ls_array_free_ids[--ls_array_free_top];\n";
+    o_ << "  if (ls_array_count >= LS_MAX_ARRAYS) return -1;\n";
+    o_ << "  return ls_array_count++;\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_array_release_id(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= LS_MAX_ARRAYS) return;\n";
+    o_ << "  if (ls_array_free_top < LS_MAX_ARRAYS) ls_array_free_ids[ls_array_free_top++] = id;\n";
+    o_ << "}\n";
     o_ << "static inline ls_array *ls_get_array(int64_t id) {\n";
     o_ << "  if (id < 0 || id >= ls_array_count) return NULL;\n";
     o_ << "  if (!ls_arrays[id].active) return NULL;\n";
@@ -5358,8 +5509,8 @@ private:
     o_ << "  a->cap = nextCap;\n";
     o_ << "}\n";
     o_ << "static inline int64_t array_new(void) {\n";
-    o_ << "  if (ls_array_count >= LS_MAX_ARRAYS) return -1;\n";
-    o_ << "  const int64_t id = ls_array_count++;\n";
+    o_ << "  const int64_t id = ls_array_alloc_id();\n";
+    o_ << "  if (id < 0) return -1;\n";
     o_ << "  ls_arrays[id].items = NULL;\n";
     o_ << "  ls_arrays[id].len = 0;\n";
     o_ << "  ls_arrays[id].cap = 0;\n";
@@ -5381,6 +5532,7 @@ private:
     o_ << "  a->len = 0;\n";
     o_ << "  a->cap = 0;\n";
     o_ << "  a->active = 0;\n";
+    o_ << "  ls_array_release_id(id);\n";
     o_ << "}\n";
     o_ << "static inline void array_push(int64_t id, const char *value) {\n";
     o_ << "  ls_array *a = ls_get_array(id);\n";
@@ -5474,6 +5626,17 @@ private:
     o_ << "} ls_dict;\n";
     o_ << "static ls_dict ls_dicts[LS_MAX_DICTS];\n";
     o_ << "static int64_t ls_dict_count = 0;\n";
+    o_ << "static int64_t ls_dict_free_ids[LS_MAX_DICTS];\n";
+    o_ << "static int64_t ls_dict_free_top = 0;\n";
+    o_ << "static inline int64_t ls_dict_alloc_id(void) {\n";
+    o_ << "  if (ls_dict_free_top > 0) return ls_dict_free_ids[--ls_dict_free_top];\n";
+    o_ << "  if (ls_dict_count >= LS_MAX_DICTS) return -1;\n";
+    o_ << "  return ls_dict_count++;\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_dict_release_id(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= LS_MAX_DICTS) return;\n";
+    o_ << "  if (ls_dict_free_top < LS_MAX_DICTS) ls_dict_free_ids[ls_dict_free_top++] = id;\n";
+    o_ << "}\n";
     o_ << "static inline uint64_t ls_hash_str(const char *s) {\n";
     o_ << "  const unsigned char *p = (const unsigned char *)(s ? s : \"\");\n";
     o_ << "  uint64_t h = 1469598103934665603ULL;\n";
@@ -5538,8 +5701,8 @@ private:
     o_ << "  return 1;\n";
     o_ << "}\n";
     o_ << "static inline int64_t dict_new(void) {\n";
-    o_ << "  if (ls_dict_count >= LS_MAX_DICTS) return -1;\n";
-    o_ << "  const int64_t id = ls_dict_count++;\n";
+    o_ << "  const int64_t id = ls_dict_alloc_id();\n";
+    o_ << "  if (id < 0) return -1;\n";
     o_ << "  ls_dicts[id].items = NULL;\n";
     o_ << "  ls_dicts[id].len = 0;\n";
     o_ << "  ls_dicts[id].cap = 0;\n";
@@ -5566,6 +5729,7 @@ private:
     o_ << "  d->len = 0;\n";
     o_ << "  d->cap = 0;\n";
     o_ << "  d->active = 0;\n";
+    o_ << "  ls_dict_release_id(id);\n";
     o_ << "}\n";
     o_ << "static inline void dict_set(int64_t id, const char *key, const char *value) {\n";
     o_ << "  ls_dict *d = ls_get_dict(id);\n";
@@ -5660,6 +5824,164 @@ private:
     o_ << "static inline ls_bool object_has(int64_t id, const char *k) { return dict_has(id, k); }\n";
     o_ << "static inline void object_remove(int64_t id, const char *k) { dict_remove(id, k); }\n";
     o_ << "static inline void object_free(int64_t id) { dict_free(id); }\n";
+    o_ << "#define LS_MAX_OPTION 4096\n";
+    o_ << "typedef struct {\n";
+    o_ << "  char *value;\n";
+    o_ << "  ls_bool has;\n";
+    o_ << "  ls_bool active;\n";
+    o_ << "} ls_option_slot;\n";
+    o_ << "static ls_option_slot ls_options[LS_MAX_OPTION];\n";
+    o_ << "static int64_t ls_option_count = 0;\n";
+    o_ << "static int64_t ls_option_free_ids[LS_MAX_OPTION];\n";
+    o_ << "static int64_t ls_option_free_top = 0;\n";
+    o_ << "static inline int64_t ls_option_alloc_id(void) {\n";
+    o_ << "  if (ls_option_free_top > 0) return ls_option_free_ids[--ls_option_free_top];\n";
+    o_ << "  if (ls_option_count >= LS_MAX_OPTION) return -1;\n";
+    o_ << "  return ls_option_count++;\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_option_release_id(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= LS_MAX_OPTION) return;\n";
+    o_ << "  if (ls_option_free_top < LS_MAX_OPTION) ls_option_free_ids[ls_option_free_top++] = id;\n";
+    o_ << "}\n";
+    o_ << "static inline ls_option_slot *ls_get_option(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= ls_option_count) return NULL;\n";
+    o_ << "  if (!ls_options[id].active) return NULL;\n";
+    o_ << "  return &ls_options[id];\n";
+    o_ << "}\n";
+    o_ << "static inline int64_t option_some(const char *value) {\n";
+    o_ << "  const int64_t id = ls_option_alloc_id();\n";
+    o_ << "  if (id < 0) return -1;\n";
+    o_ << "  ls_option_slot *o = &ls_options[id];\n";
+    o_ << "  o->value = ls_heap_dup(value ? value : \"\");\n";
+    o_ << "  o->has = 1;\n";
+    o_ << "  o->active = 1;\n";
+    o_ << "  return id;\n";
+    o_ << "}\n";
+    o_ << "static inline int64_t option_none(void) {\n";
+    o_ << "  const int64_t id = ls_option_alloc_id();\n";
+    o_ << "  if (id < 0) return -1;\n";
+    o_ << "  ls_option_slot *o = &ls_options[id];\n";
+    o_ << "  o->value = NULL;\n";
+    o_ << "  o->has = 0;\n";
+    o_ << "  o->active = 1;\n";
+    o_ << "  return id;\n";
+    o_ << "}\n";
+    o_ << "static inline ls_bool option_is_some(int64_t id) {\n";
+    o_ << "  ls_option_slot *o = ls_get_option(id);\n";
+    o_ << "  return (o && o->has) ? 1 : 0;\n";
+    o_ << "}\n";
+    o_ << "static inline ls_bool option_is_none(int64_t id) {\n";
+    o_ << "  ls_option_slot *o = ls_get_option(id);\n";
+    o_ << "  return (!o || !o->has) ? 1 : 0;\n";
+    o_ << "}\n";
+    o_ << "static inline const char *option_unwrap(int64_t id) {\n";
+    o_ << "  ls_option_slot *o = ls_get_option(id);\n";
+    o_ << "  if (!o || !o->has || !o->value) return \"\";\n";
+    o_ << "  return o->value;\n";
+    o_ << "}\n";
+    o_ << "static inline const char *option_unwrap_or(int64_t id, const char *fallback) {\n";
+    o_ << "  ls_option_slot *o = ls_get_option(id);\n";
+    o_ << "  if (!o || !o->has || !o->value) return fallback ? fallback : \"\";\n";
+    o_ << "  return o->value;\n";
+    o_ << "}\n";
+    o_ << "static inline void option_free(int64_t id) {\n";
+    o_ << "  ls_option_slot *o = ls_get_option(id);\n";
+    o_ << "  if (!o) return;\n";
+    o_ << "  if (o->value) free(o->value);\n";
+    o_ << "  o->value = NULL;\n";
+    o_ << "  o->has = 0;\n";
+    o_ << "  o->active = 0;\n";
+    o_ << "  ls_option_release_id(id);\n";
+    o_ << "}\n";
+    o_ << "#define LS_MAX_RESULT 4096\n";
+    o_ << "typedef struct {\n";
+    o_ << "  char *value;\n";
+    o_ << "  char *err_type;\n";
+    o_ << "  char *err_msg;\n";
+    o_ << "  ls_bool ok;\n";
+    o_ << "  ls_bool active;\n";
+    o_ << "} ls_result_slot;\n";
+    o_ << "static ls_result_slot ls_results[LS_MAX_RESULT];\n";
+    o_ << "static int64_t ls_result_count = 0;\n";
+    o_ << "static int64_t ls_result_free_ids[LS_MAX_RESULT];\n";
+    o_ << "static int64_t ls_result_free_top = 0;\n";
+    o_ << "static inline int64_t ls_result_alloc_id(void) {\n";
+    o_ << "  if (ls_result_free_top > 0) return ls_result_free_ids[--ls_result_free_top];\n";
+    o_ << "  if (ls_result_count >= LS_MAX_RESULT) return -1;\n";
+    o_ << "  return ls_result_count++;\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_result_release_id(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= LS_MAX_RESULT) return;\n";
+    o_ << "  if (ls_result_free_top < LS_MAX_RESULT) ls_result_free_ids[ls_result_free_top++] = id;\n";
+    o_ << "}\n";
+    o_ << "static inline ls_result_slot *ls_get_result(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= ls_result_count) return NULL;\n";
+    o_ << "  if (!ls_results[id].active) return NULL;\n";
+    o_ << "  return &ls_results[id];\n";
+    o_ << "}\n";
+    o_ << "static inline int64_t result_ok(const char *value) {\n";
+    o_ << "  const int64_t id = ls_result_alloc_id();\n";
+    o_ << "  if (id < 0) return -1;\n";
+    o_ << "  ls_result_slot *r = &ls_results[id];\n";
+    o_ << "  r->value = ls_heap_dup(value ? value : \"\");\n";
+    o_ << "  r->err_type = NULL;\n";
+    o_ << "  r->err_msg = NULL;\n";
+    o_ << "  r->ok = 1;\n";
+    o_ << "  r->active = 1;\n";
+    o_ << "  return id;\n";
+    o_ << "}\n";
+    o_ << "static inline int64_t result_err(const char *type_name, const char *msg) {\n";
+    o_ << "  const int64_t id = ls_result_alloc_id();\n";
+    o_ << "  if (id < 0) return -1;\n";
+    o_ << "  ls_result_slot *r = &ls_results[id];\n";
+    o_ << "  r->value = NULL;\n";
+    o_ << "  r->err_type = ls_heap_dup(type_name ? type_name : \"Error\");\n";
+    o_ << "  r->err_msg = ls_heap_dup(msg ? msg : \"\");\n";
+    o_ << "  r->ok = 0;\n";
+    o_ << "  r->active = 1;\n";
+    o_ << "  return id;\n";
+    o_ << "}\n";
+    o_ << "static inline ls_bool result_is_ok(int64_t id) {\n";
+    o_ << "  ls_result_slot *r = ls_get_result(id);\n";
+    o_ << "  return (r && r->ok) ? 1 : 0;\n";
+    o_ << "}\n";
+    o_ << "static inline ls_bool result_is_err(int64_t id) {\n";
+    o_ << "  ls_result_slot *r = ls_get_result(id);\n";
+    o_ << "  return (!r || !r->ok) ? 1 : 0;\n";
+    o_ << "}\n";
+    o_ << "static inline const char *result_value(int64_t id) {\n";
+    o_ << "  ls_result_slot *r = ls_get_result(id);\n";
+    o_ << "  if (!r || !r->ok || !r->value) return \"\";\n";
+    o_ << "  return r->value;\n";
+    o_ << "}\n";
+    o_ << "static inline const char *result_error_type(int64_t id) {\n";
+    o_ << "  ls_result_slot *r = ls_get_result(id);\n";
+    o_ << "  if (!r || r->ok || !r->err_type) return \"\";\n";
+    o_ << "  return r->err_type;\n";
+    o_ << "}\n";
+    o_ << "static inline const char *result_error_message(int64_t id) {\n";
+    o_ << "  ls_result_slot *r = ls_get_result(id);\n";
+    o_ << "  if (!r || r->ok || !r->err_msg) return \"\";\n";
+    o_ << "  return r->err_msg;\n";
+    o_ << "}\n";
+    o_ << "static inline const char *result_unwrap_or(int64_t id, const char *fallback) {\n";
+    o_ << "  ls_result_slot *r = ls_get_result(id);\n";
+    o_ << "  if (!r || !r->ok || !r->value) return fallback ? fallback : \"\";\n";
+    o_ << "  return r->value;\n";
+    o_ << "}\n";
+    o_ << "static inline void result_free(int64_t id) {\n";
+    o_ << "  ls_result_slot *r = ls_get_result(id);\n";
+    o_ << "  if (!r) return;\n";
+    o_ << "  if (r->value) free(r->value);\n";
+    o_ << "  if (r->err_type) free(r->err_type);\n";
+    o_ << "  if (r->err_msg) free(r->err_msg);\n";
+    o_ << "  r->value = NULL;\n";
+    o_ << "  r->err_type = NULL;\n";
+    o_ << "  r->err_msg = NULL;\n";
+    o_ << "  r->ok = 0;\n";
+    o_ << "  r->active = 0;\n";
+    o_ << "  ls_result_release_id(id);\n";
+    o_ << "}\n";
     o_ << "#define LS_MAX_NP 1024\n";
     o_ << "#define LS_MAX_NP_ELEMS 10000000\n";
     o_ << "typedef struct {\n";
@@ -5670,6 +5992,17 @@ private:
     o_ << "} ls_np;\n";
     o_ << "static ls_np ls_np_slots[LS_MAX_NP];\n";
     o_ << "static int64_t ls_np_count = 0;\n";
+    o_ << "static int64_t ls_np_free_ids[LS_MAX_NP];\n";
+    o_ << "static int64_t ls_np_free_top = 0;\n";
+    o_ << "static inline int64_t ls_np_alloc_id(void) {\n";
+    o_ << "  if (ls_np_free_top > 0) return ls_np_free_ids[--ls_np_free_top];\n";
+    o_ << "  if (ls_np_count >= LS_MAX_NP) return -1;\n";
+    o_ << "  return ls_np_count++;\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_np_release_id(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= LS_MAX_NP) return;\n";
+    o_ << "  if (ls_np_free_top < LS_MAX_NP) ls_np_free_ids[ls_np_free_top++] = id;\n";
+    o_ << "}\n";
     o_ << "static inline ls_np *ls_get_np(int64_t id) {\n";
     o_ << "  if (id < 0 || id >= ls_np_count) return NULL;\n";
     o_ << "  if (!ls_np_slots[id].active) return NULL;\n";
@@ -5677,12 +6010,15 @@ private:
     o_ << "}\n";
     o_ << "static inline int64_t np_new(int64_t n) {\n";
     o_ << "  if (n < 0 || n > LS_MAX_NP_ELEMS) return -1;\n";
-    o_ << "  if (ls_np_count >= LS_MAX_NP) return -1;\n";
-    o_ << "  const int64_t id = ls_np_count++;\n";
+    o_ << "  const int64_t id = ls_np_alloc_id();\n";
+    o_ << "  if (id < 0) return -1;\n";
     o_ << "  double *p = NULL;\n";
     o_ << "  if (n > 0) {\n";
     o_ << "    p = (double *)calloc((size_t)n, sizeof(double));\n";
-    o_ << "    if (!p) return -1;\n";
+    o_ << "    if (!p) {\n";
+    o_ << "      ls_np_release_id(id);\n";
+    o_ << "      return -1;\n";
+    o_ << "    }\n";
     o_ << "  }\n";
     o_ << "  ls_np_slots[id].data = p;\n";
     o_ << "  ls_np_slots[id].len = n;\n";
@@ -5698,6 +6034,7 @@ private:
     o_ << "  v->len = 0;\n";
     o_ << "  v->cap = 0;\n";
     o_ << "  v->active = 0;\n";
+    o_ << "  ls_np_release_id(id);\n";
     o_ << "}\n";
     o_ << "static inline int64_t np_len(int64_t id) {\n";
     o_ << "  ls_np *v = ls_get_np(id);\n";
@@ -5873,6 +6210,17 @@ private:
     o_ << "} ls_gfx;\n";
     o_ << "static ls_gfx ls_gfx_slots[LS_MAX_GFX];\n";
     o_ << "static int64_t ls_gfx_count = 0;\n";
+    o_ << "static int64_t ls_gfx_free_ids[LS_MAX_GFX];\n";
+    o_ << "static int64_t ls_gfx_free_top = 0;\n";
+    o_ << "static inline int64_t ls_gfx_alloc_id(void) {\n";
+    o_ << "  if (ls_gfx_free_top > 0) return ls_gfx_free_ids[--ls_gfx_free_top];\n";
+    o_ << "  if (ls_gfx_count >= LS_MAX_GFX) return -1;\n";
+    o_ << "  return ls_gfx_count++;\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_gfx_release_id(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= LS_MAX_GFX) return;\n";
+    o_ << "  if (ls_gfx_free_top < LS_MAX_GFX) ls_gfx_free_ids[ls_gfx_free_top++] = id;\n";
+    o_ << "}\n";
     o_ << "static inline uint8_t ls_color_u8(int64_t v) {\n";
     o_ << "  if (v <= 0) return 0;\n";
     o_ << "  if (v >= 255) return 255;\n";
@@ -5885,14 +6233,17 @@ private:
     o_ << "}\n";
     o_ << "static inline int64_t gfx_new(int64_t w, int64_t h) {\n";
     o_ << "  if (w <= 0 || h <= 0 || w > 16384 || h > 16384) return -1;\n";
-    o_ << "  if (ls_gfx_count >= LS_MAX_GFX) return -1;\n";
     o_ << "  const size_t area = (size_t)w * (size_t)h;\n";
     o_ << "  if (area == 0 || area > (((size_t)-1) / 3)) return -1;\n";
     o_ << "  const size_t bytes = area * 3;\n";
     o_ << "  uint8_t *pix = (uint8_t *)malloc(bytes);\n";
     o_ << "  if (!pix) return -1;\n";
     o_ << "  memset(pix, 0, bytes);\n";
-    o_ << "  const int64_t id = ls_gfx_count++;\n";
+    o_ << "  const int64_t id = ls_gfx_alloc_id();\n";
+    o_ << "  if (id < 0) {\n";
+    o_ << "    free(pix);\n";
+    o_ << "    return -1;\n";
+    o_ << "  }\n";
     o_ << "  ls_gfx_slots[id].pix = pix;\n";
     o_ << "  ls_gfx_slots[id].w = w;\n";
     o_ << "  ls_gfx_slots[id].h = h;\n";
@@ -5907,6 +6258,7 @@ private:
     o_ << "  g->w = 0;\n";
     o_ << "  g->h = 0;\n";
     o_ << "  g->active = 0;\n";
+    o_ << "  ls_gfx_release_id(id);\n";
     o_ << "}\n";
     o_ << "static inline int64_t gfx_width(int64_t id) {\n";
     o_ << "  ls_gfx *g = ls_get_gfx(id);\n";
@@ -6073,6 +6425,17 @@ private:
     o_ << "} ls_game;\n";
     o_ << "static ls_game ls_games[LS_MAX_GAME];\n";
     o_ << "static int64_t ls_game_count = 0;\n";
+    o_ << "static int64_t ls_game_free_ids[LS_MAX_GAME];\n";
+    o_ << "static int64_t ls_game_free_top = 0;\n";
+    o_ << "static inline int64_t ls_game_alloc_id(void) {\n";
+    o_ << "  if (ls_game_free_top > 0) return ls_game_free_ids[--ls_game_free_top];\n";
+    o_ << "  if (ls_game_count >= LS_MAX_GAME) return -1;\n";
+    o_ << "  return ls_game_count++;\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_game_release_id(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= LS_MAX_GAME) return;\n";
+    o_ << "  if (ls_game_free_top < LS_MAX_GAME) ls_game_free_ids[ls_game_free_top++] = id;\n";
+    o_ << "}\n";
     o_ << "static inline ls_game *ls_get_game(int64_t id) {\n";
     o_ << "  if (id < 0 || id >= ls_game_count) return NULL;\n";
     o_ << "  if (!ls_games[id].active) return NULL;\n";
@@ -6142,13 +6505,16 @@ private:
     o_ << "#endif\n";
     o_ << "static inline int64_t game_new(int64_t w, int64_t h, const char *title, ls_bool visible) {\n";
     o_ << "  if (w <= 0 || h <= 0 || w > 8192 || h > 8192) return -1;\n";
-    o_ << "  if (ls_game_count >= LS_MAX_GAME) return -1;\n";
     o_ << "  const size_t area = (size_t)w * (size_t)h;\n";
     o_ << "  if (area == 0 || area > (((size_t)-1) / 3)) return -1;\n";
     o_ << "  uint8_t *pix = (uint8_t *)malloc(area * 3);\n";
     o_ << "  if (!pix) return -1;\n";
     o_ << "  memset(pix, 0, area * 3);\n";
-    o_ << "  const int64_t id = ls_game_count++;\n";
+    o_ << "  const int64_t id = ls_game_alloc_id();\n";
+    o_ << "  if (id < 0) {\n";
+    o_ << "    free(pix);\n";
+    o_ << "    return -1;\n";
+    o_ << "  }\n";
     o_ << "  ls_game *g = &ls_games[id];\n";
     o_ << "  memset(g, 0, sizeof(*g));\n";
     o_ << "  g->pix = pix;\n";
@@ -6182,6 +6548,7 @@ private:
     o_ << "    if (!g->hwnd) {\n";
     o_ << "      free(g->pix);\n";
     o_ << "      memset(g, 0, sizeof(*g));\n";
+    o_ << "      ls_game_release_id(id);\n";
     o_ << "      return -1;\n";
     o_ << "    }\n";
     o_ << "    ShowWindow(g->hwnd, SW_SHOW);\n";
@@ -6217,6 +6584,7 @@ private:
     o_ << "#endif\n";
     o_ << "  if (g->pix) free(g->pix);\n";
     o_ << "  memset(g, 0, sizeof(*g));\n";
+    o_ << "  ls_game_release_id(id);\n";
     o_ << "}\n";
     o_ << "static inline int64_t game_width(int64_t id) {\n";
     o_ << "  ls_game *g = ls_get_game(id);\n";
@@ -6590,6 +6958,17 @@ private:
     o_ << "} ls_phys_obj;\n";
     o_ << "static ls_phys_obj ls_phys_objs[LS_MAX_PHYS];\n";
     o_ << "static int64_t ls_phys_count = 0;\n";
+    o_ << "static int64_t ls_phys_free_ids[LS_MAX_PHYS];\n";
+    o_ << "static int64_t ls_phys_free_top = 0;\n";
+    o_ << "static inline int64_t ls_phys_alloc_id(void) {\n";
+    o_ << "  if (ls_phys_free_top > 0) return ls_phys_free_ids[--ls_phys_free_top];\n";
+    o_ << "  if (ls_phys_count >= LS_MAX_PHYS) return -1;\n";
+    o_ << "  return ls_phys_count++;\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_phys_release_id(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= LS_MAX_PHYS) return;\n";
+    o_ << "  if (ls_phys_free_top < LS_MAX_PHYS) ls_phys_free_ids[ls_phys_free_top++] = id;\n";
+    o_ << "}\n";
     o_ << "static int64_t ls_camera_target = -1;\n";
     o_ << "static double ls_camera_off_x = 0.0;\n";
     o_ << "static double ls_camera_off_y = 1.8;\n";
@@ -6597,6 +6976,25 @@ private:
     o_ << "static double ls_camera_x = 0.0;\n";
     o_ << "static double ls_camera_y = 0.0;\n";
     o_ << "static double ls_camera_z = 0.0;\n";
+    o_ << "static int64_t ls_phys_ids[LS_MAX_PHYS];\n";
+    o_ << "static int64_t ls_phys_hard_idx[LS_MAX_PHYS];\n";
+    o_ << "static int64_t ls_phys_soft_idx[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_px_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_py_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_pz_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_vx_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_vy_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_vz_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_fx_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_fy_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_fz_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_restx_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_resty_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_restz_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_inv_mass_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_damping_soa[LS_MAX_PHYS];\n";
+    o_ << "static double ls_phys_bounce_soa[LS_MAX_PHYS];\n";
+    o_ << "static ls_bool ls_phys_soft_soa[LS_MAX_PHYS];\n";
     o_ << "static inline ls_phys_obj *ls_get_phys(int64_t id) {\n";
     o_ << "  if (id < 0 || id >= ls_phys_count) return NULL;\n";
     o_ << "  if (!ls_phys_objs[id].active) return NULL;\n";
@@ -6626,8 +7024,8 @@ private:
     o_ << "static inline int64_t phys_new(double x, double y, double z, double mass, ls_bool soft) {\n";
     o_ << "  if (!isfinite(x) || !isfinite(y) || !isfinite(z)) return -1;\n";
     o_ << "  if (!isfinite(mass) || mass <= 0.0) mass = 1.0;\n";
-    o_ << "  if (ls_phys_count >= LS_MAX_PHYS) return -1;\n";
-    o_ << "  const int64_t id = ls_phys_count++;\n";
+    o_ << "  const int64_t id = ls_phys_alloc_id();\n";
+    o_ << "  if (id < 0) return -1;\n";
     o_ << "  ls_phys_obj *o = &ls_phys_objs[id];\n";
     o_ << "  o->px = x;\n";
     o_ << "  o->py = y;\n";
@@ -6655,6 +7053,7 @@ private:
     o_ << "  ls_phys_obj *o = ls_get_phys(id);\n";
     o_ << "  if (!o) return;\n";
     o_ << "  o->active = 0;\n";
+    o_ << "  ls_phys_release_id(id);\n";
     o_ << "  if (ls_camera_target == id) ls_camera_target = -1;\n";
     o_ << "  ls_camera_bind_default();\n";
     o_ << "}\n";
@@ -6701,37 +7100,101 @@ private:
     o_ << "static inline void phys_step(double dt) {\n";
     o_ << "  if (!isfinite(dt) || dt <= 0.0) return;\n";
     o_ << "  if (dt > 0.1) dt = 0.1;\n";
+    o_ << "  const double dt60 = dt * 60.0;\n";
+    o_ << "  int64_t n = 0;\n";
+    o_ << "  int64_t hard_n = 0;\n";
+    o_ << "  int64_t soft_n = 0;\n";
     o_ << "  for (int64_t i = 0; i < ls_phys_count; ++i) {\n";
     o_ << "    ls_phys_obj *o = &ls_phys_objs[i];\n";
     o_ << "    if (!o->active) continue;\n";
-    o_ << "    double ax = o->fx * o->inv_mass;\n";
-    o_ << "    double ay = o->fy * o->inv_mass - 9.81;\n";
-    o_ << "    double az = o->fz * o->inv_mass;\n";
-    o_ << "    if (o->soft) {\n";
-    o_ << "      const double k = 22.0;\n";
-    o_ << "      const double c = 2.0;\n";
-    o_ << "      ax += (o->restx - o->px) * k - o->vx * c;\n";
-    o_ << "      ay += (o->resty - o->py) * k - o->vy * c;\n";
-    o_ << "      az += (o->restz - o->pz) * k - o->vz * c;\n";
-    o_ << "    }\n";
-    o_ << "    o->vx += ax * dt;\n";
-    o_ << "    o->vy += ay * dt;\n";
-    o_ << "    o->vz += az * dt;\n";
-    o_ << "    double damp = 1.0 - ((1.0 - o->damping) * (dt * 60.0));\n";
+    o_ << "    const int64_t j = n++;\n";
+    o_ << "    ls_phys_ids[j] = i;\n";
+    o_ << "    ls_phys_px_soa[j] = o->px;\n";
+    o_ << "    ls_phys_py_soa[j] = o->py;\n";
+    o_ << "    ls_phys_pz_soa[j] = o->pz;\n";
+    o_ << "    ls_phys_vx_soa[j] = o->vx;\n";
+    o_ << "    ls_phys_vy_soa[j] = o->vy;\n";
+    o_ << "    ls_phys_vz_soa[j] = o->vz;\n";
+    o_ << "    ls_phys_fx_soa[j] = o->fx;\n";
+    o_ << "    ls_phys_fy_soa[j] = o->fy;\n";
+    o_ << "    ls_phys_fz_soa[j] = o->fz;\n";
+    o_ << "    ls_phys_restx_soa[j] = o->restx;\n";
+    o_ << "    ls_phys_resty_soa[j] = o->resty;\n";
+    o_ << "    ls_phys_restz_soa[j] = o->restz;\n";
+    o_ << "    ls_phys_inv_mass_soa[j] = o->inv_mass;\n";
+    o_ << "    ls_phys_damping_soa[j] = o->damping;\n";
+    o_ << "    ls_phys_bounce_soa[j] = o->bounce;\n";
+    o_ << "    ls_phys_soft_soa[j] = o->soft ? 1 : 0;\n";
+    o_ << "    if (o->soft) ls_phys_soft_idx[soft_n++] = j;\n";
+    o_ << "    else ls_phys_hard_idx[hard_n++] = j;\n";
+    o_ << "  }\n";
+    o_ << "  for (int64_t h = 0; h < hard_n; ++h) {\n";
+    o_ << "    const int64_t j = ls_phys_hard_idx[h];\n";
+    o_ << "    double ax = ls_phys_fx_soa[j] * ls_phys_inv_mass_soa[j];\n";
+    o_ << "    double ay = ls_phys_fy_soa[j] * ls_phys_inv_mass_soa[j] - 9.81;\n";
+    o_ << "    double az = ls_phys_fz_soa[j] * ls_phys_inv_mass_soa[j];\n";
+    o_ << "    ls_phys_vx_soa[j] += ax * dt;\n";
+    o_ << "    ls_phys_vy_soa[j] += ay * dt;\n";
+    o_ << "    ls_phys_vz_soa[j] += az * dt;\n";
+    o_ << "    double damp = 1.0 - ((1.0 - ls_phys_damping_soa[j]) * dt60);\n";
     o_ << "    if (damp < 0.0) damp = 0.0;\n";
     o_ << "    if (damp > 1.0) damp = 1.0;\n";
-    o_ << "    o->vx *= damp;\n";
-    o_ << "    o->vy *= damp;\n";
-    o_ << "    o->vz *= damp;\n";
-    o_ << "    o->px += o->vx * dt;\n";
-    o_ << "    o->py += o->vy * dt;\n";
-    o_ << "    o->pz += o->vz * dt;\n";
-    o_ << "    if (o->py < 0.0) {\n";
-    o_ << "      o->py = 0.0;\n";
-    o_ << "      if (o->vy < 0.0) o->vy = -o->vy * o->bounce;\n";
-    o_ << "      o->vx *= 0.95;\n";
-    o_ << "      o->vz *= 0.95;\n";
+    o_ << "    ls_phys_vx_soa[j] *= damp;\n";
+    o_ << "    ls_phys_vy_soa[j] *= damp;\n";
+    o_ << "    ls_phys_vz_soa[j] *= damp;\n";
+    o_ << "    ls_phys_px_soa[j] += ls_phys_vx_soa[j] * dt;\n";
+    o_ << "    ls_phys_py_soa[j] += ls_phys_vy_soa[j] * dt;\n";
+    o_ << "    ls_phys_pz_soa[j] += ls_phys_vz_soa[j] * dt;\n";
+    o_ << "    if (ls_phys_py_soa[j] < 0.0) {\n";
+    o_ << "      ls_phys_py_soa[j] = 0.0;\n";
+    o_ << "      if (ls_phys_vy_soa[j] < 0.0) ls_phys_vy_soa[j] = -ls_phys_vy_soa[j] * ls_phys_bounce_soa[j];\n";
+    o_ << "      ls_phys_vx_soa[j] *= 0.95;\n";
+    o_ << "      ls_phys_vz_soa[j] *= 0.95;\n";
     o_ << "    }\n";
+    o_ << "    ls_phys_fx_soa[j] = 0.0;\n";
+    o_ << "    ls_phys_fy_soa[j] = 0.0;\n";
+    o_ << "    ls_phys_fz_soa[j] = 0.0;\n";
+    o_ << "  }\n";
+    o_ << "  for (int64_t h = 0; h < soft_n; ++h) {\n";
+    o_ << "    const int64_t j = ls_phys_soft_idx[h];\n";
+    o_ << "    double ax = ls_phys_fx_soa[j] * ls_phys_inv_mass_soa[j];\n";
+    o_ << "    double ay = ls_phys_fy_soa[j] * ls_phys_inv_mass_soa[j] - 9.81;\n";
+    o_ << "    double az = ls_phys_fz_soa[j] * ls_phys_inv_mass_soa[j];\n";
+    o_ << "    const double k = 22.0;\n";
+    o_ << "    const double c = 2.0;\n";
+    o_ << "    ax += (ls_phys_restx_soa[j] - ls_phys_px_soa[j]) * k - ls_phys_vx_soa[j] * c;\n";
+    o_ << "    ay += (ls_phys_resty_soa[j] - ls_phys_py_soa[j]) * k - ls_phys_vy_soa[j] * c;\n";
+    o_ << "    az += (ls_phys_restz_soa[j] - ls_phys_pz_soa[j]) * k - ls_phys_vz_soa[j] * c;\n";
+    o_ << "    ls_phys_vx_soa[j] += ax * dt;\n";
+    o_ << "    ls_phys_vy_soa[j] += ay * dt;\n";
+    o_ << "    ls_phys_vz_soa[j] += az * dt;\n";
+    o_ << "    double damp = 1.0 - ((1.0 - ls_phys_damping_soa[j]) * dt60);\n";
+    o_ << "    if (damp < 0.0) damp = 0.0;\n";
+    o_ << "    if (damp > 1.0) damp = 1.0;\n";
+    o_ << "    ls_phys_vx_soa[j] *= damp;\n";
+    o_ << "    ls_phys_vy_soa[j] *= damp;\n";
+    o_ << "    ls_phys_vz_soa[j] *= damp;\n";
+    o_ << "    ls_phys_px_soa[j] += ls_phys_vx_soa[j] * dt;\n";
+    o_ << "    ls_phys_py_soa[j] += ls_phys_vy_soa[j] * dt;\n";
+    o_ << "    ls_phys_pz_soa[j] += ls_phys_vz_soa[j] * dt;\n";
+    o_ << "    if (ls_phys_py_soa[j] < 0.0) {\n";
+    o_ << "      ls_phys_py_soa[j] = 0.0;\n";
+    o_ << "      if (ls_phys_vy_soa[j] < 0.0) ls_phys_vy_soa[j] = -ls_phys_vy_soa[j] * ls_phys_bounce_soa[j];\n";
+    o_ << "      ls_phys_vx_soa[j] *= 0.95;\n";
+    o_ << "      ls_phys_vz_soa[j] *= 0.95;\n";
+    o_ << "    }\n";
+    o_ << "    ls_phys_fx_soa[j] = 0.0;\n";
+    o_ << "    ls_phys_fy_soa[j] = 0.0;\n";
+    o_ << "    ls_phys_fz_soa[j] = 0.0;\n";
+    o_ << "  }\n";
+    o_ << "  for (int64_t j = 0; j < n; ++j) {\n";
+    o_ << "    ls_phys_obj *o = &ls_phys_objs[ls_phys_ids[j]];\n";
+    o_ << "    o->px = ls_phys_px_soa[j];\n";
+    o_ << "    o->py = ls_phys_py_soa[j];\n";
+    o_ << "    o->pz = ls_phys_pz_soa[j];\n";
+    o_ << "    o->vx = ls_phys_vx_soa[j];\n";
+    o_ << "    o->vy = ls_phys_vy_soa[j];\n";
+    o_ << "    o->vz = ls_phys_vz_soa[j];\n";
     o_ << "    o->fx = 0.0;\n";
     o_ << "    o->fy = 0.0;\n";
     o_ << "    o->fz = 0.0;\n";
@@ -6885,6 +7348,12 @@ private:
       o_ << "} ls_http_client_slot;\n";
       o_ << "static ls_http_server_slot ls_http_servers[LS_HTTP_MAX_SERVERS];\n";
       o_ << "static ls_http_client_slot ls_http_clients[LS_HTTP_MAX_CLIENTS];\n";
+      o_ << "static int64_t ls_http_server_next = 0;\n";
+      o_ << "static int64_t ls_http_client_next = 0;\n";
+      o_ << "static int64_t ls_http_server_free_ids[LS_HTTP_MAX_SERVERS];\n";
+      o_ << "static int64_t ls_http_client_free_ids[LS_HTTP_MAX_CLIENTS];\n";
+      o_ << "static int64_t ls_http_server_free_top = 0;\n";
+      o_ << "static int64_t ls_http_client_free_top = 0;\n";
       o_ << "static inline ls_http_server_slot *ls_http_get_server(int64_t id) {\n";
       o_ << "  if (id < 0 || id >= LS_HTTP_MAX_SERVERS) return NULL;\n";
       o_ << "  if (!ls_http_servers[id].active) return NULL;\n";
@@ -6896,24 +7365,22 @@ private:
       o_ << "  return &ls_http_clients[id];\n";
       o_ << "}\n";
       o_ << "static inline int64_t ls_http_alloc_server(ls_http_socket sock) {\n";
-      o_ << "  for (int64_t i = 0; i < LS_HTTP_MAX_SERVERS; ++i) {\n";
-      o_ << "    if (!ls_http_servers[i].active) {\n";
-      o_ << "      ls_http_servers[i].active = 1;\n";
-      o_ << "      ls_http_servers[i].sock = sock;\n";
-      o_ << "      return i;\n";
-      o_ << "    }\n";
-      o_ << "  }\n";
-      o_ << "  return -1;\n";
+      o_ << "  int64_t id = -1;\n";
+      o_ << "  if (ls_http_server_free_top > 0) id = ls_http_server_free_ids[--ls_http_server_free_top];\n";
+      o_ << "  else if (ls_http_server_next < LS_HTTP_MAX_SERVERS) id = ls_http_server_next++;\n";
+      o_ << "  if (id < 0) return -1;\n";
+      o_ << "  ls_http_servers[id].active = 1;\n";
+      o_ << "  ls_http_servers[id].sock = sock;\n";
+      o_ << "  return id;\n";
       o_ << "}\n";
       o_ << "static inline int64_t ls_http_alloc_client(ls_http_socket sock) {\n";
-      o_ << "  for (int64_t i = 0; i < LS_HTTP_MAX_CLIENTS; ++i) {\n";
-      o_ << "    if (!ls_http_clients[i].active) {\n";
-      o_ << "      ls_http_clients[i].active = 1;\n";
-      o_ << "      ls_http_clients[i].sock = sock;\n";
-      o_ << "      return i;\n";
-      o_ << "    }\n";
-      o_ << "  }\n";
-      o_ << "  return -1;\n";
+      o_ << "  int64_t id = -1;\n";
+      o_ << "  if (ls_http_client_free_top > 0) id = ls_http_client_free_ids[--ls_http_client_free_top];\n";
+      o_ << "  else if (ls_http_client_next < LS_HTTP_MAX_CLIENTS) id = ls_http_client_next++;\n";
+      o_ << "  if (id < 0) return -1;\n";
+      o_ << "  ls_http_clients[id].active = 1;\n";
+      o_ << "  ls_http_clients[id].sock = sock;\n";
+      o_ << "  return id;\n";
       o_ << "}\n";
       o_ << "#if defined(_WIN32)\n";
       o_ << "static inline int ls_http_send_chunk(ls_http_socket sock, const char *data, int chunk) {\n";
@@ -7012,7 +7479,7 @@ private:
       o_ << "    ls_http_close_socket(s);\n";
       o_ << "    return -1;\n";
       o_ << "  }\n";
-      o_ << "  if (listen(s, 16) != 0) {\n";
+      o_ << "  if (listen(s, 64) != 0) {\n";
       o_ << "    ls_http_close_socket(s);\n";
       o_ << "    return -1;\n";
       o_ << "  }\n";
@@ -7063,6 +7530,9 @@ private:
       o_ << "  ls_http_close_socket(srv->sock);\n";
       o_ << "  srv->sock = ls_http_bad_socket();\n";
       o_ << "  srv->active = 0;\n";
+      o_ << "  if (server_id >= 0 && server_id < LS_HTTP_MAX_SERVERS && ls_http_server_free_top < LS_HTTP_MAX_SERVERS) {\n";
+      o_ << "    ls_http_server_free_ids[ls_http_server_free_top++] = server_id;\n";
+      o_ << "  }\n";
       o_ << "}\n";
       o_ << "static inline int64_t http_client_connect(const char *host, int64_t port) {\n";
       o_ << "  if (port < 1 || port > 65535) return -1;\n";
@@ -7107,6 +7577,9 @@ private:
       o_ << "  ls_http_close_socket(c->sock);\n";
       o_ << "  c->sock = ls_http_bad_socket();\n";
       o_ << "  c->active = 0;\n";
+      o_ << "  if (client_id >= 0 && client_id < LS_HTTP_MAX_CLIENTS && ls_http_client_free_top < LS_HTTP_MAX_CLIENTS) {\n";
+      o_ << "    ls_http_client_free_ids[ls_http_client_free_top++] = client_id;\n";
+      o_ << "  }\n";
       o_ << "}\n";
     }
     o_ << "static inline int64_t to_i64(double v) { return (int64_t)v; }\n";
@@ -7239,6 +7712,17 @@ private:
     o_ << "typedef struct { ls_task_fn fn; } ls_task_payload;\n";
     o_ << "static ls_task_slot ls_tasks[LS_MAX_TASKS];\n";
     o_ << "static int64_t ls_task_count = 0;\n";
+    o_ << "static int64_t ls_task_free_ids[LS_MAX_TASKS];\n";
+    o_ << "static int64_t ls_task_free_top = 0;\n";
+    o_ << "static inline int64_t ls_task_alloc_id(void) {\n";
+    o_ << "  if (ls_task_free_top > 0) return ls_task_free_ids[--ls_task_free_top];\n";
+    o_ << "  if (ls_task_count >= LS_MAX_TASKS) return -1;\n";
+    o_ << "  return ls_task_count++;\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_task_release_id(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= LS_MAX_TASKS) return;\n";
+    o_ << "  if (ls_task_free_top < LS_MAX_TASKS) ls_task_free_ids[ls_task_free_top++] = id;\n";
+    o_ << "}\n";
     o_ << "#if defined(_WIN32)\n";
     o_ << "static DWORD WINAPI ls_task_entry(LPVOID arg) {\n";
     o_ << "  ls_task_payload *payload = (ls_task_payload *)arg;\n";
@@ -7258,30 +7742,34 @@ private:
     o_ << "#endif\n";
     o_ << "static inline int64_t ls_spawn(ls_task_fn fn) {\n";
     o_ << "  if (!fn) return -1;\n";
-    o_ << "  if (ls_task_count >= LS_MAX_TASKS) return -1;\n";
     o_ << "  ls_task_payload *payload = (ls_task_payload *)malloc(sizeof(ls_task_payload));\n";
     o_ << "  if (!payload) return -1;\n";
     o_ << "  payload->fn = fn;\n";
-    o_ << "  const int64_t id = ls_task_count;\n";
+    o_ << "  const int64_t id = ls_task_alloc_id();\n";
+    o_ << "  if (id < 0) {\n";
+    o_ << "    free(payload);\n";
+    o_ << "    return -1;\n";
+    o_ << "  }\n";
     o_ << "#if defined(_WIN32)\n";
     o_ << "  HANDLE handle = CreateThread(NULL, 0, ls_task_entry, payload, 0, NULL);\n";
     o_ << "  if (handle == NULL) {\n";
     o_ << "    free(payload);\n";
+    o_ << "    ls_task_release_id(id);\n";
     o_ << "    return -1;\n";
     o_ << "  }\n";
     o_ << "  ls_tasks[id].handle = handle;\n";
     o_ << "#else\n";
     o_ << "  if (pthread_create(&ls_tasks[id].handle, NULL, ls_task_entry, payload) != 0) {\n";
     o_ << "    free(payload);\n";
+    o_ << "    ls_task_release_id(id);\n";
     o_ << "    return -1;\n";
     o_ << "  }\n";
     o_ << "#endif\n";
     o_ << "  ls_tasks[id].active = 1;\n";
-    o_ << "  ls_task_count = id + 1;\n";
     o_ << "  return id;\n";
     o_ << "}\n";
     o_ << "static inline void await(int64_t task_id) {\n";
-    o_ << "  if (task_id < 0 || task_id >= ls_task_count) return;\n";
+    o_ << "  if (task_id < 0 || task_id >= LS_MAX_TASKS) return;\n";
     o_ << "  if (!ls_tasks[task_id].active) return;\n";
     o_ << "#if defined(_WIN32)\n";
     o_ << "  WaitForSingleObject(ls_tasks[task_id].handle, INFINITE);\n";
@@ -7290,9 +7778,12 @@ private:
     o_ << "  (void)pthread_join(ls_tasks[task_id].handle, NULL);\n";
     o_ << "#endif\n";
     o_ << "  ls_tasks[task_id].active = 0;\n";
+    o_ << "  ls_task_release_id(task_id);\n";
     o_ << "}\n";
     o_ << "static inline void await_all(void) {\n";
-    o_ << "  for (int64_t i = 0; i < ls_task_count; ++i) await(i);\n";
+    o_ << "  for (int64_t i = 0; i < LS_MAX_TASKS; ++i) {\n";
+    o_ << "    if (ls_tasks[i].active) await(i);\n";
+    o_ << "  }\n";
     o_ << "}\n";
     o_ << "static inline int64_t ls_pow_i64(int64_t base, int64_t exp) {\n";
     o_ << "  if (exp < 0) return 0;\n";
@@ -7488,6 +7979,9 @@ private:
         o_ << e(*n.v);
       }
       o_ << ";\n";
+      if (n.isOwned && !n.ownedFreeFn.empty()) {
+        registerOwned(n.n, n.ownedFreeFn);
+      }
       return;
     }
     case SK::Assign: {
@@ -7509,6 +8003,7 @@ private:
     }
     case SK::Ret: {
       auto &n = static_cast<const SRet &>(s);
+      emitCleanupForReturn(k);
       ind(o_, k);
       if (!n.has || !n.v)
         o_ << "return;\n";
@@ -7522,12 +8017,18 @@ private:
       auto &n = static_cast<const SIf &>(s);
       ind(o_, k);
       o_ << "if (" << e(*n.c) << ") {\n";
+      pushCleanupScope();
       for (const SP &x : n.t) stmt(*x, k + 1);
+      emitCurrentScopeCleanup(k + 1);
+      popCleanupScope();
       ind(o_, k);
       o_ << "}";
       if (!n.e.empty()) {
         o_ << " else {\n";
+        pushCleanupScope();
         for (const SP &x : n.e) stmt(*x, k + 1);
+        emitCurrentScopeCleanup(k + 1);
+        popCleanupScope();
         ind(o_, k);
         o_ << "}\n";
       } else {
@@ -7539,7 +8040,10 @@ private:
       auto &n = static_cast<const SWhile &>(s);
       ind(o_, k);
       o_ << "while (" << e(*n.c) << ") {\n";
+      pushCleanupScope(true);
       for (const SP &x : n.b) stmt(*x, k + 1);
+      emitCurrentScopeCleanup(k + 1);
+      popCleanupScope();
       ind(o_, k);
       o_ << "}\n";
       return;
@@ -7955,7 +8459,10 @@ private:
       o_ << "{\n";
       ind(o_, k + 1);
       o_ << "ls_format_begin();\n";
+      pushCleanupScope();
       for (const SP &x : n.b) stmt(*x, k + 1);
+      emitCurrentScopeCleanup(k + 1);
+      popCleanupScope();
       ind(o_, k + 1);
       o_ << "const char *" << outName << " = ls_format_end(";
       if (n.endArg)
@@ -7998,7 +8505,10 @@ private:
     if (hasStateSpeed) {
       o_ << "  const int64_t " << stateSpeedVar_ << " = clock_us();\n";
     }
+    pushCleanupScope();
     for (const SP &s : f.b) stmt(*s, 1);
+    emitCurrentScopeCleanup(1);
+    popCleanupScope();
     if (f.ret == Type::Void) o_ << "  return;\n";
     o_ << "}\n\n";
     stateSpeedVar_ = prevStateSpeedVar;

@@ -66,6 +66,18 @@ add(a: i64, b: i64) -> i64 {
 }
 ```
 
+Explicit throw contracts are supported:
+
+```linescript
+read_config() -> i64 throws IOError do
+  return 1
+end
+
+main() -> i64 throws IOError do
+  return read_config()
+end
+```
+
 ## 4. Variables (`declare`)
 
 ```linescript
@@ -74,6 +86,7 @@ vars_demo() -> i64 do
   declare y: i64
   declare z = 10
   declare const limit: i64 = 1000
+  declare owned cache = dict_new()
 
   x = 5
   y = z + x
@@ -84,12 +97,14 @@ end
 ## 5. Keyword and Type Glossary
 
 - `declare`: declares a variable.
+- `owned`: after `declare`, enables deterministic scope-exit free for supported handle constructors.
 - `const`: marks a declared variable as immutable (cannot be reassigned).
 - `i64`: 64-bit signed integer type.
 - `f64`: 64-bit floating-point type.
 - `bool`: boolean type (`true`/`false`).
 - `str`: string type for text like `"hello"`.
 - `->`: return type annotation in a function signature.
+- `throws`: explicit error contract annotation in a function signature.
 - `do` / `end`: start and end a block.
 - `inline`: hint for aggressive inlining of small hot functions.
 - `extern`: declares a function implemented outside LineScript.
@@ -105,6 +120,7 @@ end
 - `.freeConsole()` / `FreeConsole()`: inline console detach marker (no `end`).
 - `array_*`, `dict_*`, `map_*`: built-in collection helpers using `i64` handles.
 - `object_*`: OOP-style aliases over dictionary handles (`i64`).
+- `option_*` / `result_*`: enum-style nullable/error handles (`i64`) for explicit non-null flows.
 - `gfx_*`: built-in native 2D graphics helpers using `i64` canvas handles.
 - `game_*`: built-in 2D game runtime (frame loop + rendering + deterministic headless mode).
 - `pg_*`: pygame-like aliases over `game_*` and `gfx_*`.

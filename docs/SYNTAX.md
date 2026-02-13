@@ -26,6 +26,7 @@ Only C-style single-line comments are supported:
 ### Quick Glossary
 
 - `declare`: defines a variable.
+- `owned`: after `declare`, enables deterministic auto-free at scope exit for supported handle constructors.
 - `const`: after `declare`, makes that variable immutable.
 - `i64`: integer numbers (for counters, indexes, ids).
 - `f64`: floating-point numbers (for decimals/math).
@@ -64,6 +65,22 @@ Return type:
 - optional
 - defaults to `void` when omitted
 
+Explicit throw contract:
+
+```linescript
+load_config() -> i64 throws IOError do
+  return 1
+end
+
+main() -> i64 throws IOError do
+  return load_config()
+end
+```
+
+Rules:
+- `throws <ErrorName>[, <ErrorName>...]` is optional.
+- if a function calls another function that declares `throws X`, the caller must also declare `throws X`.
+
 ## 5. Block Styles
 
 `do/end`:
@@ -92,6 +109,7 @@ declare y: i64
 declare z = 123
 declare message: str = "hello"
 declare const pi_value: f64 = 3.14159
+declare owned cache = dict_new()
 ```
 
 Rules:
@@ -99,6 +117,9 @@ Rules:
 - untyped `declare x` defaults to `i64` with value `0`
 - typed declarations without initializer default to `0`, `0.0`, or `false`
 - assignment requires prior declaration
+- `declare owned` requires an `i64` handle constructor with a matching free function
+- `declare owned` is currently restricted to non-loop scopes for deterministic cleanup cost
+- owned handle variables are not assignable and cannot be returned directly
 
 Assignment:
 
@@ -395,6 +416,25 @@ Notes:
 - arrays/maps are runtime handles stored as `i64`
 - index/key read/write is done via builtin functions (`array_get/array_set`, `dict_get/dict_set`)
 - this allows input values to be saved directly into array/dict entries
+
+Option/Result (Rust-style enum-like handles, no null references):
+
+```linescript
+declare maybe_name = option_some("Lin")
+declare none_name = option_none()
+println(option_is_some(maybe_name))
+println(option_unwrap_or(none_name, "guest"))
+option_free(maybe_name)
+option_free(none_name)
+
+declare ok = result_ok("done")
+declare err = result_err("IOError", "file missing")
+println(result_is_ok(ok))
+println(result_error_type(err))
+println(result_error_message(err))
+result_free(ok)
+result_free(err)
+```
 
 Native graphics through builtins (no external package required):
 

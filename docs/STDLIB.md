@@ -162,6 +162,7 @@ Index behavior:
 - `array_get` out of range returns `""`.
 - `array_set` auto-grows array and fills missing slots with `""`.
 - call `array_free` when done to release array storage immediately.
+- `declare owned arr = array_new()` enables deterministic auto-free at scope exit.
 
 Example (input saved to array index):
 
@@ -223,6 +224,34 @@ main() -> i64 do
   return 0
 end
 ```
+
+## 5.1 Option and Result Handles (Enum-Style)
+
+These are `i64` handles that model nullable/errored values without null references.
+
+```linescript
+option_some(value: str) -> i64
+option_none() -> i64
+option_is_some(opt: i64) -> bool
+option_is_none(opt: i64) -> bool
+option_unwrap(opt: i64) -> str
+option_unwrap_or(opt: i64, fallback: str) -> str
+option_free(opt: i64) -> void
+
+result_ok(value: str) -> i64
+result_err(error_type: str, message: str) -> i64
+result_is_ok(res: i64) -> bool
+result_is_err(res: i64) -> bool
+result_value(res: i64) -> str
+result_error_type(res: i64) -> str
+result_error_message(res: i64) -> str
+result_unwrap_or(res: i64, fallback: str) -> str
+result_free(res: i64) -> void
+```
+
+Notes:
+- call `option_free` / `result_free` when done (or use `declare owned`).
+- these are useful with explicit `throws` contracts in function signatures.
 
 ## 6. Manual Memory (C-Style, No GC)
 
