@@ -18,7 +18,9 @@ Only C-style single-line comments are supported:
 ## 3. Primitive Types
 
 - `i64`
+- `i32`
 - `f64`
+- `f32`
 - `bool`
 - `str`
 - `void`
@@ -28,8 +30,12 @@ Only C-style single-line comments are supported:
 - `declare`: defines a variable.
 - `owned`: after `declare`, enables deterministic auto-free at scope exit for supported handle constructors.
 - `const`: after `declare`, makes that variable immutable.
+- `class`: declares a class with fields, constructor, and methods.
+- `this`: current instance handle inside class methods/constructor.
 - `i64`: integer numbers (for counters, indexes, ids).
+- `i32`: 32-bit integer numbers (lighter integer storage).
 - `f64`: floating-point numbers (for decimals/math).
+- `f32`: 32-bit floating-point numbers.
 - `bool`: logical true/false.
 - `str`: text in double quotes, e.g. `"hello"`.
 
@@ -80,6 +86,50 @@ end
 Rules:
 - `throws <ErrorName>[, <ErrorName>...]` is optional.
 - if a function calls another function that declares `throws X`, the caller must also declare `throws X`.
+
+### C++-Style Classes
+
+LineScript supports class syntax with typed fields, constructor, methods, and member access:
+
+```linescript
+class Counter do
+  declare value: i64 = 0
+  declare enabled: bool = true
+
+  constructor(start: i64) do
+    this.value = start
+  end
+
+  add(delta: i64) -> void do
+    if this.enabled do
+      this.value += delta
+    end
+  end
+
+  get() -> i64 do
+    return this.value
+  end
+end
+
+main() -> i64 do
+  declare c = Counter(10)
+  c.add(5)
+  println(c.get())
+  return 0
+end
+```
+
+Rules:
+- class fields use `declare <name>: <type> [= <expr>]`.
+- fields currently must be declared before class methods.
+- constructor is optional; if omitted, a default constructor is generated.
+- constructor name can be `constructor(...)` (recommended).
+- methods are declared as `name(...) -> type do ... end` (or `fn name(...)`).
+- use `this.field` / `this.method(...)` inside class members.
+- use `obj.field`, `obj.field = ...`, `obj.field += ...`, and `obj.method(...)` outside.
+- class names are valid type annotations and map to handle type `i64` internally.
+- class fields can use `i32`/`f32` (optional), or stay with `i64`/`f64`.
+- inheritance/polymorphic dispatch are not built in yet.
 
 ## 5. Block Styles
 
@@ -638,8 +688,8 @@ LineScript error (<file or stage>): line <n>, col <m>: <message>
 ## 16. Programming Paradigms
 
 OOP-style:
-- use `object_*`/`dict_*` handles as object state
-- implement methods as regular functions that take an object handle
+- use `class` for C++-style fields + methods + constructor syntax
+- use `object_*`/`dict_*` handles directly for low-level dynamic object storage
 
 Functional style:
 - prefer pure helper functions

@@ -99,8 +99,12 @@ end
 - `declare`: declares a variable.
 - `owned`: after `declare`, enables deterministic scope-exit free for supported handle constructors.
 - `const`: marks a declared variable as immutable (cannot be reassigned).
+- `class`: defines a class with typed fields, constructor, and methods.
+- `this`: current instance inside class members.
 - `i64`: 64-bit signed integer type.
+- `i32`: 32-bit signed integer type.
 - `f64`: 64-bit floating-point type.
+- `f32`: 32-bit floating-point type.
 - `bool`: boolean type (`true`/`false`).
 - `str`: string type for text like `"hello"`.
 - `->`: return type annotation in a function signature.
@@ -494,27 +498,54 @@ end
 
 Common utility helpers:
 - text: `len`, `is_empty`, `contains`, `includes`, `starts_with`, `ends_with`, `find`
-- conversion: `parse_i64`, `parse_f64`, `to_i64`, `to_f64`
+- conversion: `parse_i64`, `parse_f64`, `to_i32`, `to_i64`, `to_f32`, `to_f64`
 - integer helpers: `gcd`, `lcm`, `min_i64`, `max_i64`, `abs_i64`, `clamp_i64`
 - ad-hoc generic numeric helpers: `max`, `min`, `abs`, `clamp`
 
 ## 14. Programming Styles
 
-Object-Oriented style (object model with methods on handles):
+Object-Oriented style (C++-style classes):
 
 ```linescript
-player_new(name: str, hp: i64) -> i64 do
-  declare p = object_new()
-  object_set(p, "name", name)
-  object_set(p, "hp", formatOutput(hp))
-  return p
+class Player do
+  declare name: str = "player"
+  declare hp: i64 = 100
+
+  constructor(name: str, hp: i64) do
+    this.name = name
+    this.hp = hp
+  end
+
+  hit(dmg: i64) -> void do
+    this.hp = max(0, this.hp - dmg)
+  end
+
+  alive() -> bool do
+    return this.hp > 0
+  end
 end
 
-player_hit(p: i64, dmg: i64) -> void do
-  declare hp = parse_i64(object_get(p, "hp"))
-  hp = max(0, hp - dmg)
-  object_set(p, "hp", formatOutput(hp))
+main() -> i64 do
+  declare p = Player("Ava", 120)
+  p.hit(30)
+  println(p.hp)
+  println(p.alive())
+  return 0
 end
+```
+
+Notes:
+- class fields must be declared before methods.
+- class names can be used in type annotations and are stored as `i64` handles internally.
+- constructor is optional; a default constructor is generated when omitted.
+- classes can use `i32`/`f32` fields when you want narrower numeric storage, but `i64`/`f64` remain fully supported.
+
+Low-level object model is still available:
+
+```linescript
+declare o = object_new()
+object_set(o, "k", "v")
+println(object_get(o, "k"))
 ```
 
 Functional style (pure functions, immutable values, composition):

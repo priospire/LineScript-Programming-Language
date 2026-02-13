@@ -70,6 +70,7 @@ enum class TokenKind {
   KwWhile,
   KwFor,
   KwParallel,
+  KwClass,
   KwIn,
   KwStep,
   KwDo,
@@ -80,6 +81,7 @@ enum class TokenKind {
   KwTrue,
   KwFalse,
   Arrow,
+  Dot,
   DotDot,
   Pow,
   PlusPlus,
@@ -199,10 +201,6 @@ public:
         out.push_back({TokenKind::DotDot, "..", s});
         continue;
       }
-      if (c == '.' && (std::isalpha(static_cast<unsigned char>(peek(1))) || peek(1) == '_')) {
-        out.push_back(readDotBuiltin());
-        continue;
-      }
       if (c == '*' && peek(1) == '*') {
         if (peek(2) == '=') {
           adv();
@@ -269,6 +267,7 @@ public:
       case ':': out.push_back({TokenKind::Colon, ":", s}); break;
       case ';': out.push_back({TokenKind::Semi, ";", s}); break;
       case ',': out.push_back({TokenKind::Comma, ",", s}); break;
+      case '.': out.push_back({TokenKind::Dot, ".", s}); break;
       case '(': out.push_back({TokenKind::LPar, "(", s}); break;
       case ')': out.push_back({TokenKind::RPar, ")", s}); break;
       case '{': out.push_back({TokenKind::LBra, "{", s}); break;
@@ -350,6 +349,7 @@ private:
     if (t == "while") return {TokenKind::KwWhile, t, s};
     if (t == "for") return {TokenKind::KwFor, t, s};
     if (t == "parallel") return {TokenKind::KwParallel, t, s};
+    if (t == "class") return {TokenKind::KwClass, t, s};
     if (t == "in") return {TokenKind::KwIn, t, s};
     if (t == "step") return {TokenKind::KwStep, t, s};
     if (t == "do") return {TokenKind::KwDo, t, s};
@@ -363,23 +363,6 @@ private:
     if (t == "true") return {TokenKind::KwTrue, t, s};
     if (t == "false") return {TokenKind::KwFalse, t, s};
     return {TokenKind::Id, t, s};
-  }
-
-  Token readDotBuiltin() {
-    Span s{line_, col_};
-    std::string t;
-    t.push_back(adv()); // '.'
-    while (!eof()) {
-      char c = peek();
-      if (std::isalnum(static_cast<unsigned char>(c)) || c == '_')
-        t.push_back(adv());
-      else
-        break;
-    }
-    if (t == ".stateSpeed") return {TokenKind::Id, t, s};
-    if (t == ".format") return {TokenKind::Id, t, s};
-    if (t == ".freeConsole") return {TokenKind::Id, t, s};
-    throw CompileError(s, "unknown dot-prefixed builtin '" + t + "'");
   }
 
   Token readNumber() {
@@ -427,11 +410,15 @@ private:
   }
 };
 
-enum class Type { I64, F64, Bool, Str, Void };
-static bool isNum(Type t) { return t == Type::I64 || t == Type::F64; }
+enum class Type { I32, I64, F32, F64, Bool, Str, Void };
+static bool isInt(Type t) { return t == Type::I32 || t == Type::I64; }
+static bool isFloat(Type t) { return t == Type::F32 || t == Type::F64; }
+static bool isNum(Type t) { return isInt(t) || isFloat(t); }
 static std::string typeName(Type t) {
   switch (t) {
+  case Type::I32: return "i32";
   case Type::I64: return "i64";
+  case Type::F32: return "f32";
   case Type::F64: return "f64";
   case Type::Bool: return "bool";
   case Type::Str: return "str";
@@ -577,6 +564,19 @@ struct Program {
   std::vector<Fn> f;
 };
 
+struct ParsedClassField {
+  std::string n;
+  Type t = Type::I64;
+  EP init;
+  Span s;
+};
+
+struct ClassInfo {
+  Span s;
+  std::unordered_map<std::string, Type> fields;
+  std::unordered_map<std::string, std::string> methods;
+};
+
 class Parser {
 public:
   explicit Parser(std::vector<Token> t) : t_(std::move(t)) {}
@@ -584,7 +584,11 @@ public:
     Program p;
     skipNl();
     while (!is(TokenKind::End)) {
-      p.f.push_back(fn());
+      if (eat(TokenKind::KwClass)) {
+        parseClass(p, t_[i_ - 1].span);
+      } else {
+        p.f.push_back(fn());
+      }
       skipNl();
     }
     return p;
@@ -593,6 +597,9 @@ public:
 private:
   std::vector<Token> t_;
   std::size_t i_ = 0;
+  std::unordered_map<std::string, ClassInfo> classes_;
+  std::unordered_map<std::string, std::string> varClass_;
+  std::string currentClass_;
 
   const Token &cur() const { return t_[i_]; }
   const Token &look(std::size_t off) const { return i_ + off < t_.size() ? t_[i_ + off] : t_.back(); }
@@ -642,7 +649,9 @@ private:
   }
   EP defaultValueFor(Type t, const Span &s) {
     switch (t) {
+    case Type::I32: return std::make_unique<EInt>(0, s);
     case Type::I64: return std::make_unique<EInt>(0, s);
+    case Type::F32: return std::make_unique<EFloat>(0.0, s);
     case Type::F64: return std::make_unique<EFloat>(0.0, s);
     case Type::Bool: return std::make_unique<EBool>(false, s);
     case Type::Str: return std::make_unique<EString>("", s);
@@ -651,14 +660,304 @@ private:
     throw CompileError(s, "cannot declare variable with type void");
   }
 
-  Type parseType() {
+  static EP cloneExpr(const Expr &e) {
+    switch (e.k) {
+    case EK::Int: return std::make_unique<EInt>(static_cast<const EInt &>(e).v, e.s);
+    case EK::Float: return std::make_unique<EFloat>(static_cast<const EFloat &>(e).v, e.s);
+    case EK::Bool: return std::make_unique<EBool>(static_cast<const EBool &>(e).v, e.s);
+    case EK::Str: return std::make_unique<EString>(static_cast<const EString &>(e).v, e.s);
+    case EK::Var: return std::make_unique<EVar>(static_cast<const EVar &>(e).n, e.s);
+    case EK::Unary: {
+      const auto &n = static_cast<const EUnary &>(e);
+      return std::make_unique<EUnary>(n.op, cloneExpr(*n.x), e.s);
+    }
+    case EK::Binary: {
+      const auto &n = static_cast<const EBinary &>(e);
+      return std::make_unique<EBinary>(n.op, cloneExpr(*n.l), cloneExpr(*n.r), e.s);
+    }
+    case EK::Call: {
+      const auto &n = static_cast<const ECall &>(e);
+      std::vector<EP> args;
+      args.reserve(n.a.size());
+      for (const auto &arg : n.a) args.push_back(cloneExpr(*arg));
+      return std::make_unique<ECall>(n.f, std::move(args), e.s);
+    }
+    }
+    throw CompileError(e.s, "internal clone expression error");
+  }
+
+  Type parseType(std::string *className = nullptr) {
     Token tok = need(TokenKind::Id, "expected type name");
+    if (className) className->clear();
+    if (tok.text == "i32") return Type::I32;
     if (tok.text == "i64") return Type::I64;
+    if (tok.text == "f32") return Type::F32;
     if (tok.text == "f64") return Type::F64;
     if (tok.text == "bool") return Type::Bool;
     if (tok.text == "str") return Type::Str;
     if (tok.text == "void") return Type::Void;
+    if (classes_.count(tok.text)) {
+      if (className) *className = tok.text;
+      return Type::I64;
+    }
     throw CompileError(tok.span, "unknown type '" + tok.text + "'");
+  }
+
+  std::vector<Param> parseParams(std::unordered_map<std::string, std::string> &paramClasses) {
+    std::vector<Param> params;
+    need(TokenKind::LPar, "expected '('");
+    if (!is(TokenKind::RPar)) {
+      while (true) {
+        Param p;
+        p.n = need(TokenKind::Id, "expected parameter name").text;
+        need(TokenKind::Colon, "expected ':'");
+        std::string classType;
+        p.t = parseType(&classType);
+        if (!classType.empty()) paramClasses[p.n] = classType;
+        params.push_back(std::move(p));
+        if (!eat(TokenKind::Comma)) break;
+      }
+    }
+    need(TokenKind::RPar, "expected ')'");
+    return params;
+  }
+
+  std::string classMethodSymbol(const std::string &cls, const std::string &method) const {
+    return "__ls_cls_" + cls + "_" + method;
+  }
+
+  std::string resolveReceiverClass(const std::string &receiver) const {
+    if (receiver == "this") return currentClass_;
+    auto it = varClass_.find(receiver);
+    return it == varClass_.end() ? "" : it->second;
+  }
+
+  EP makeFieldLoadExpr(const std::string &receiver, const std::string &field, Type fieldType, const Span &s) {
+    std::vector<EP> getArgs;
+    getArgs.push_back(std::make_unique<EVar>(receiver, s));
+    getArgs.push_back(std::make_unique<EString>(field, s));
+    EP raw = std::make_unique<ECall>("object_get", std::move(getArgs), s);
+    if (fieldType == Type::Str) return raw;
+    if (fieldType == Type::I32) {
+      std::vector<EP> parseArgs;
+      parseArgs.push_back(std::move(raw));
+      EP asI64 = std::make_unique<ECall>("parse_i64", std::move(parseArgs), s);
+      std::vector<EP> castArgs;
+      castArgs.push_back(std::move(asI64));
+      return std::make_unique<ECall>("to_i32", std::move(castArgs), s);
+    }
+    if (fieldType == Type::I64) {
+      std::vector<EP> args;
+      args.push_back(std::move(raw));
+      return std::make_unique<ECall>("parse_i64", std::move(args), s);
+    }
+    if (fieldType == Type::F32) {
+      std::vector<EP> parseArgs;
+      parseArgs.push_back(std::move(raw));
+      EP asF64 = std::make_unique<ECall>("parse_f64", std::move(parseArgs), s);
+      std::vector<EP> castArgs;
+      castArgs.push_back(std::move(asF64));
+      return std::make_unique<ECall>("to_f32", std::move(castArgs), s);
+    }
+    if (fieldType == Type::F64) {
+      std::vector<EP> args;
+      args.push_back(std::move(raw));
+      return std::make_unique<ECall>("parse_f64", std::move(args), s);
+    }
+    if (fieldType == Type::Bool) {
+      std::vector<EP> args;
+      args.push_back(std::move(raw));
+      EP asI64 = std::make_unique<ECall>("parse_i64", std::move(args), s);
+      std::vector<EP> boolArgs;
+      boolArgs.push_back(std::move(asI64));
+      return std::make_unique<ECall>("i64_to_bool", std::move(boolArgs), s);
+    }
+    throw CompileError(s, "unsupported class field type");
+  }
+
+  SP makeFieldStoreStmt(const std::string &receiver, const std::string &field, Type fieldType, EP value, const Span &s) {
+    std::vector<EP> fmtArgs;
+    if (fieldType == Type::Bool) {
+      std::vector<EP> boolArgs;
+      boolArgs.push_back(std::move(value));
+      fmtArgs.push_back(std::make_unique<ECall>("bool_to_i64", std::move(boolArgs), s));
+    } else {
+      fmtArgs.push_back(std::move(value));
+    }
+    EP text = std::make_unique<ECall>("formatOutput", std::move(fmtArgs), s);
+    std::vector<EP> setArgs;
+    setArgs.push_back(std::make_unique<EVar>(receiver, s));
+    setArgs.push_back(std::make_unique<EString>(field, s));
+    setArgs.push_back(std::move(text));
+    EP call = std::make_unique<ECall>("object_set", std::move(setArgs), s);
+    return std::make_unique<SExpr>(std::move(call), s);
+  }
+
+  std::string constructorClassFromExpr(const Expr &e) const {
+    if (e.k != EK::Call) return "";
+    const auto &c = static_cast<const ECall &>(e);
+    return classes_.count(c.f) ? c.f : "";
+  }
+
+  void parseClass(Program &p, const Span &classSpan) {
+    (void)classSpan;
+    Token classNameTok = need(TokenKind::Id, "expected class name");
+    const std::string className = classNameTok.text;
+    if (classes_.count(className)) {
+      throw CompileError(classNameTok.span, "duplicate class '" + className + "'");
+    }
+    classes_[className] = ClassInfo{classNameTok.span, {}, {}};
+    ClassInfo &classInfo = classes_.at(className);
+    skipNl();
+    bool braceStyle = false;
+    bool endStyle = false;
+    if (eat(TokenKind::LBra)) braceStyle = true;
+    else if (eat(TokenKind::KwDo)) endStyle = true;
+    else
+      throw CompileError(cur().span, "expected '{' or 'do' to start class body");
+
+    std::vector<ParsedClassField> fields;
+    std::optional<Fn> ctor;
+    bool seenCallable = false;
+    while (!is(TokenKind::End)) {
+      skipNl();
+      if (braceStyle && is(TokenKind::RBra)) break;
+      if (endStyle && is(TokenKind::KwEnd)) break;
+      if (eat(TokenKind::KwDeclare)) {
+        if (seenCallable) {
+          throw CompileError(t_[i_ - 1].span, "class fields must be declared before methods");
+        }
+        ParsedClassField field;
+        field.s = t_[i_ - 1].span;
+        field.n = need(TokenKind::Id, "expected class field name").text;
+        if (classInfo.fields.count(field.n)) {
+          throw CompileError(field.s, "duplicate class field '" + field.n + "'");
+        }
+        need(TokenKind::Colon, "class field requires explicit type");
+        field.t = parseType();
+        if (eat(TokenKind::Assign)) {
+          field.init = expr();
+        } else {
+          field.init = defaultValueFor(field.t, field.s);
+        }
+        classInfo.fields[field.n] = field.t;
+        fields.push_back(std::move(field));
+        needStmtEnd("expected statement terminator after class field declaration");
+        continue;
+      }
+      seenCallable = true;
+      Fn f;
+      skipNl();
+      while (true) {
+        if (eat(TokenKind::KwInline)) {
+          f.inl = true;
+          skipNl();
+          continue;
+        }
+        if (eat(TokenKind::KwExtern)) {
+          f.ex = true;
+          skipNl();
+          continue;
+        }
+        break;
+      }
+      Token nameTok;
+      if (eat(TokenKind::KwFn)) {
+        nameTok = need(TokenKind::Id, "expected method name");
+      } else if (is(TokenKind::Id) && lookNonNl(1).kind == TokenKind::LPar) {
+        nameTok = need(TokenKind::Id, "expected method name");
+      } else {
+        throw CompileError(cur().span, "expected class method or constructor");
+      }
+      const bool isCtor = (nameTok.text == "constructor" || nameTok.text == className);
+      f.s = nameTok.span;
+      std::unordered_map<std::string, std::string> paramClasses;
+      f.p = parseParams(paramClasses);
+      if (!isCtor && eat(TokenKind::Arrow)) {
+        f.ret = parseType();
+      } else if (isCtor && eat(TokenKind::Arrow)) {
+        throw CompileError(nameTok.span, "constructor return type is implicit");
+      } else if (isCtor) {
+        f.ret = Type::I64;
+      }
+      if (eat(TokenKind::KwThrows)) {
+        while (true) {
+          Token errTok = need(TokenKind::Id, "expected error type after 'throws'");
+          f.throws.push_back(errTok.text);
+          if (!eat(TokenKind::Comma)) break;
+        }
+      }
+      if (isCtor && f.ex) {
+        throw CompileError(nameTok.span, "constructor cannot be extern");
+      }
+      if (f.ex) {
+        needStmtEnd("expected statement terminator after extern method");
+      } else {
+        auto savedClass = currentClass_;
+        auto savedVarClass = varClass_;
+        currentClass_ = className;
+        varClass_.clear();
+        varClass_["this"] = className;
+        for (const auto &entry : paramClasses) varClass_[entry.first] = entry.second;
+        f.b = block();
+        currentClass_ = std::move(savedClass);
+        varClass_ = std::move(savedVarClass);
+      }
+
+      if (isCtor) {
+        if (ctor.has_value()) throw CompileError(nameTok.span, "duplicate constructor for class '" + className + "'");
+        Fn generated;
+        generated.s = f.s;
+        generated.n = className;
+        generated.ret = Type::I64;
+        generated.p = f.p;
+        generated.throws = f.throws;
+        generated.inl = f.inl;
+        EP objCtor = std::make_unique<ECall>("object_new", std::vector<EP>{}, f.s);
+        generated.b.push_back(
+            std::make_unique<SLet>("this", std::optional<Type>(Type::I64), false, false, std::move(objCtor), f.s));
+        for (const auto &field : fields) {
+          generated.b.push_back(makeFieldStoreStmt("this", field.n, field.t, cloneExpr(*field.init), field.s));
+        }
+        for (auto &stmt : f.b) generated.b.push_back(std::move(stmt));
+        generated.b.push_back(std::make_unique<SRet>(true, std::make_unique<EVar>("this", f.s), f.s));
+        ctor = std::move(generated);
+      } else {
+        if (classInfo.methods.count(nameTok.text)) {
+          throw CompileError(nameTok.span, "duplicate method '" + nameTok.text + "' in class '" + className + "'");
+        }
+        const std::string symbol = classMethodSymbol(className, nameTok.text);
+        classInfo.methods[nameTok.text] = symbol;
+        Fn generated;
+        generated.s = f.s;
+        generated.n = symbol;
+        generated.ret = f.ret;
+        generated.throws = f.throws;
+        generated.inl = f.inl;
+        generated.p.push_back(Param{"this", Type::I64});
+        for (auto &param : f.p) generated.p.push_back(std::move(param));
+        generated.b = std::move(f.b);
+        p.f.push_back(std::move(generated));
+      }
+    }
+    if (braceStyle) need(TokenKind::RBra, "expected '}'");
+    else need(TokenKind::KwEnd, "expected 'end' to close class");
+    if (!ctor.has_value()) {
+      Fn generated;
+      generated.s = classNameTok.span;
+      generated.n = className;
+      generated.ret = Type::I64;
+      EP objCtor = std::make_unique<ECall>("object_new", std::vector<EP>{}, classNameTok.span);
+      generated.b.push_back(std::make_unique<SLet>("this", std::optional<Type>(Type::I64), false, false,
+                                                   std::move(objCtor), classNameTok.span));
+      for (const auto &field : fields) {
+        generated.b.push_back(makeFieldStoreStmt("this", field.n, field.t, cloneExpr(*field.init), field.s));
+      }
+      generated.b.push_back(
+          std::make_unique<SRet>(true, std::make_unique<EVar>("this", classNameTok.span), classNameTok.span));
+      ctor = std::move(generated);
+    }
+    p.f.push_back(std::move(*ctor));
   }
 
   Fn fn() {
@@ -687,18 +986,8 @@ private:
     }
     f.s = nameTok.span;
     f.n = nameTok.text;
-    need(TokenKind::LPar, "expected '('");
-    if (!is(TokenKind::RPar)) {
-      while (true) {
-        Param p;
-        p.n = need(TokenKind::Id, "expected parameter name").text;
-        need(TokenKind::Colon, "expected ':'");
-        p.t = parseType();
-        f.p.push_back(std::move(p));
-        if (!eat(TokenKind::Comma)) break;
-      }
-    }
-    need(TokenKind::RPar, "expected ')'");
+    std::unordered_map<std::string, std::string> paramClasses;
+    f.p = parseParams(paramClasses);
     if (eat(TokenKind::Arrow)) f.ret = parseType();
     if (eat(TokenKind::KwThrows)) {
       while (true) {
@@ -711,8 +1000,14 @@ private:
       needStmtEnd("expected statement terminator after extern function");
       return f;
     }
+    auto savedClass = currentClass_;
+    auto savedVarClass = varClass_;
+    currentClass_.clear();
+    varClass_ = std::move(paramClasses);
     skipNl();
     f.b = block();
+    currentClass_ = std::move(savedClass);
+    varClass_ = std::move(savedVarClass);
     return f;
   }
 
@@ -741,6 +1036,10 @@ private:
     return k == TokenKind::Assign || k == TokenKind::PlusAssign || k == TokenKind::MinusAssign ||
            k == TokenKind::StarAssign || k == TokenKind::SlashAssign || k == TokenKind::PercentAssign ||
            k == TokenKind::PowAssign;
+  }
+  bool isMemberAssignStart() const {
+    return is(TokenKind::Id) && lookNonNl(1).kind == TokenKind::Dot && lookNonNl(2).kind == TokenKind::Id &&
+           isAssignOp(lookNonNl(3).kind);
   }
   static BK assignOpToBinary(TokenKind k, const Span &s) {
     switch (k) {
@@ -833,6 +1132,7 @@ private:
     }
     if (is(TokenKind::Id) && lookNonNl(1).kind == TokenKind::PlusPlus) return sPostfixIncDec(true);
     if (is(TokenKind::Id) && lookNonNl(1).kind == TokenKind::MinusMinus) return sPostfixIncDec(false);
+    if (isMemberAssignStart()) return sAssignMember();
     if (is(TokenKind::Id) && isAssignOp(lookNonNl(1).kind)) return sAssign();
     EP e = expr();
     Span s = e->s;
@@ -858,7 +1158,8 @@ private:
     }
     Token n = need(TokenKind::Id, "expected variable name");
     std::optional<Type> d;
-    if (eat(TokenKind::Colon)) d = parseType();
+    std::string declaredClass;
+    if (eat(TokenKind::Colon)) d = parseType(&declaredClass);
     EP v;
     if (eat(TokenKind::Assign)) {
       v = expr();
@@ -870,6 +1171,14 @@ private:
         d = Type::I64;
         v = std::make_unique<EInt>(0, n.span);
       }
+    }
+    const std::string ctorClass = constructorClassFromExpr(*v);
+    if (!declaredClass.empty()) {
+      varClass_[n.text] = declaredClass;
+    } else if (!ctorClass.empty()) {
+      varClass_[n.text] = ctorClass;
+    } else {
+      varClass_.erase(n.text);
     }
     needStmtEnd("expected statement terminator after variable declaration");
     return std::make_unique<SLet>(n.text, d, isConst, isOwned, std::move(v), n.span);
@@ -890,8 +1199,55 @@ private:
       EP r = expr();
       v = std::make_unique<EBinary>(assignOpToBinary(op, n.span), std::move(l), std::move(r), n.span);
     }
+    if (op == TokenKind::Assign) {
+      std::string assignedClass = constructorClassFromExpr(*v);
+      if (assignedClass.empty() && v->k == EK::Var) {
+        const auto &rhsVar = static_cast<const EVar &>(*v);
+        auto it = varClass_.find(rhsVar.n);
+        if (it != varClass_.end()) assignedClass = it->second;
+      }
+      if (!assignedClass.empty())
+        varClass_[n.text] = assignedClass;
+      else
+        varClass_.erase(n.text);
+    }
     needStmtEnd("expected statement terminator after assignment");
     return std::make_unique<SAssign>(n.text, std::move(v), n.span);
+  }
+
+  SP sAssignMember() {
+    Token receiverTok = need(TokenKind::Id, "expected object receiver");
+    need(TokenKind::Dot, "expected '.'");
+    Token fieldTok = need(TokenKind::Id, "expected field name");
+    TokenKind op = cur().kind;
+    if (!isAssignOp(op)) throw CompileError(cur().span, "expected assignment operator");
+    ++i_;
+
+    const std::string className = resolveReceiverClass(receiverTok.text);
+    if (className.empty()) {
+      throw CompileError(receiverTok.span, "member assignment requires a class-typed receiver");
+    }
+    auto classIt = classes_.find(className);
+    if (classIt == classes_.end()) {
+      throw CompileError(receiverTok.span, "unknown class '" + className + "'");
+    }
+    auto fieldIt = classIt->second.fields.find(fieldTok.text);
+    if (fieldIt == classIt->second.fields.end()) {
+      throw CompileError(fieldTok.span, "class '" + className + "' has no field '" + fieldTok.text + "'");
+    }
+
+    Type fieldType = fieldIt->second;
+    EP rhs;
+    if (op == TokenKind::Assign) {
+      rhs = expr();
+    } else {
+      EP lhs = makeFieldLoadExpr(receiverTok.text, fieldTok.text, fieldType, fieldTok.span);
+      EP r = expr();
+      rhs = std::make_unique<EBinary>(assignOpToBinary(op, fieldTok.span), std::move(lhs), std::move(r), fieldTok.span);
+    }
+    SP out = makeFieldStoreStmt(receiverTok.text, fieldTok.text, fieldType, std::move(rhs), fieldTok.span);
+    needStmtEnd("expected statement terminator after member assignment");
+    return out;
   }
 
   SP sPostfixIncDec(bool isInc) {
@@ -1120,18 +1476,75 @@ private:
 
   EP call() {
     EP e = primary();
-    while (eat(TokenKind::LPar)) {
-      std::vector<EP> a;
-      if (!is(TokenKind::RPar)) {
-        while (true) {
-          a.push_back(expr());
-          if (!eat(TokenKind::Comma)) break;
+    while (true) {
+      if (eat(TokenKind::LPar)) {
+        std::vector<EP> a;
+        if (!is(TokenKind::RPar)) {
+          while (true) {
+            a.push_back(expr());
+            if (!eat(TokenKind::Comma)) break;
+          }
         }
+        need(TokenKind::RPar, "expected ')'");
+        if (e->k != EK::Var) throw CompileError(e->s, "callee must be function identifier");
+        std::string fnName = static_cast<EVar &>(*e).n;
+        e = std::make_unique<ECall>(fnName, std::move(a), e->s);
+        continue;
       }
-      need(TokenKind::RPar, "expected ')'");
-      if (e->k != EK::Var) throw CompileError(e->s, "callee must be function identifier");
-      std::string fnName = static_cast<EVar &>(*e).n;
-      e = std::make_unique<ECall>(fnName, std::move(a), e->s);
+      if (eat(TokenKind::Dot)) {
+        Token memberTok = need(TokenKind::Id, "expected member name after '.'");
+        if (eat(TokenKind::LPar)) {
+          std::vector<EP> args;
+          if (!is(TokenKind::RPar)) {
+            while (true) {
+              args.push_back(expr());
+              if (!eat(TokenKind::Comma)) break;
+            }
+          }
+          need(TokenKind::RPar, "expected ')'");
+          if (e->k != EK::Var) {
+            throw CompileError(memberTok.span, "method receiver must be an identifier");
+          }
+          const std::string receiver = static_cast<EVar &>(*e).n;
+          const std::string className = resolveReceiverClass(receiver);
+          if (className.empty()) {
+            throw CompileError(memberTok.span, "method call requires a class-typed receiver");
+          }
+          auto classIt = classes_.find(className);
+          if (classIt == classes_.end()) {
+            throw CompileError(memberTok.span, "unknown class '" + className + "'");
+          }
+          auto methodIt = classIt->second.methods.find(memberTok.text);
+          if (methodIt == classIt->second.methods.end()) {
+            throw CompileError(memberTok.span, "class '" + className + "' has no method '" + memberTok.text + "'");
+          }
+          std::vector<EP> callArgs;
+          callArgs.reserve(args.size() + 1);
+          callArgs.push_back(std::make_unique<EVar>(receiver, memberTok.span));
+          for (auto &arg : args) callArgs.push_back(std::move(arg));
+          e = std::make_unique<ECall>(methodIt->second, std::move(callArgs), memberTok.span);
+        } else {
+          if (e->k != EK::Var) {
+            throw CompileError(memberTok.span, "field receiver must be an identifier");
+          }
+          const std::string receiver = static_cast<EVar &>(*e).n;
+          const std::string className = resolveReceiverClass(receiver);
+          if (className.empty()) {
+            throw CompileError(memberTok.span, "field access requires a class-typed receiver");
+          }
+          auto classIt = classes_.find(className);
+          if (classIt == classes_.end()) {
+            throw CompileError(memberTok.span, "unknown class '" + className + "'");
+          }
+          auto fieldIt = classIt->second.fields.find(memberTok.text);
+          if (fieldIt == classIt->second.fields.end()) {
+            throw CompileError(memberTok.span, "class '" + className + "' has no field '" + memberTok.text + "'");
+          }
+          e = makeFieldLoadExpr(receiver, memberTok.text, fieldIt->second, memberTok.span);
+        }
+        continue;
+      }
+      break;
     }
     return e;
   }
@@ -1160,6 +1573,10 @@ private:
     if (eat(TokenKind::Id)) {
       Token tok = t_[i_ - 1];
       return std::make_unique<EVar>(tok.text, tok.span);
+    }
+    if (eat(TokenKind::Dot)) {
+      Token memberTok = need(TokenKind::Id, "expected identifier after '.'");
+      return std::make_unique<EVar>("." + memberTok.text, memberTok.span);
     }
     if (eat(TokenKind::LPar)) {
       EP e = expr();
@@ -1197,9 +1614,21 @@ private:
     std::string ownedFreeFn;
   };
 
-  static bool can(Type a, Type b) { return a == b || (a == Type::I64 && b == Type::F64); }
-  static Type promote(Type a, Type b) { return (a == Type::F64 || b == Type::F64) ? Type::F64 : Type::I64; }
-  static bool isPrintable(Type t) { return t == Type::I64 || t == Type::F64 || t == Type::Bool || t == Type::Str; }
+  static bool can(Type a, Type b) {
+    if (a == b) return true;
+    if (isNum(a) && isNum(b)) return true;
+    return false;
+  }
+  static Type promote(Type a, Type b) {
+    if (isFloat(a) || isFloat(b)) {
+      return (a == Type::F64 || b == Type::F64) ? Type::F64 : Type::F32;
+    }
+    return (a == Type::I64 || b == Type::I64) ? Type::I64 : Type::I32;
+  }
+  static bool isPrintable(Type t) {
+    return t == Type::I32 || t == Type::I64 || t == Type::F32 || t == Type::F64 || t == Type::Bool ||
+           t == Type::Str;
+  }
   static bool isLiteralZero(const Expr &e) {
     if (e.k == EK::Int) return static_cast<const EInt &>(e).v == 0;
     if (e.k == EK::Float) return static_cast<const EFloat &>(e).v == 0.0;
@@ -1513,6 +1942,10 @@ private:
     addSig("key_down_name", {Type::Str}, Type::Bool, s);
     addSig("parse_i64", {Type::Str}, Type::I64, s);
     addSig("parse_f64", {Type::Str}, Type::F64, s);
+    addSig("bool_to_i64", {Type::Bool}, Type::I64, s);
+    addSig("i64_to_bool", {Type::I64}, Type::Bool, s);
+    addSig("to_i32", {Type::I64}, Type::I32, s);
+    addSig("to_f32", {Type::F64}, Type::F32, s);
     addSig("to_i64", {Type::F64}, Type::I64, s);
     addSig("to_f64", {Type::I64}, Type::F64, s);
     addSig("gcd", {Type::I64, Type::I64}, Type::I64, s);
@@ -1744,13 +2177,12 @@ private:
         if (isLiteralZero(*n.r)) throw CompileError(n.r->s, "division by zero");
         return mark(promote(a, b));
       case BK::Mod:
-        if (a != Type::I64 || b != Type::I64) throw CompileError(e.s, "'%' requires i64");
+        if (!isInt(a) || !isInt(b)) throw CompileError(e.s, "'%' requires integer operands");
         if (isLiteralZero(*n.r)) throw CompileError(n.r->s, "modulo by zero");
-        return mark(Type::I64);
+        return mark(promote(a, b));
       case BK::Pow:
         if (!isNum(a) || !isNum(b)) throw CompileError(e.s, "power operator requires numeric");
-        if (a == Type::I64 && b == Type::I64) return mark(Type::I64);
-        return mark(Type::F64);
+        return mark(promote(a, b));
       case BK::Lt:
       case BK::Lte:
       case BK::Gt:
@@ -2084,7 +2516,7 @@ static bool hasOnlyUltraMinimalRuntimeCallsExpr(const Expr &e) {
     if (n.f == "print" || n.f == "println") {
       if (n.a.size() != 1) return false;
       const Expr &arg = *n.a[0];
-      if (arg.inf == Type::F64) return false;
+      if (arg.inf == Type::F64 || arg.inf == Type::F32) return false;
       if (arg.inf == Type::Str && arg.k != EK::Str) return false;
     }
     for (const auto &arg : n.a) {
@@ -2218,7 +2650,7 @@ static bool usesStringRuntimeProgram(const Program &p) {
   return false;
 }
 static bool exprUsesF64(const Expr &e) {
-  if (e.inf == Type::F64) return true;
+  if (e.inf == Type::F64 || e.inf == Type::F32) return true;
   switch (e.k) {
   case EK::Unary:
     return exprUsesF64(*static_cast<const EUnary &>(e).x);
@@ -2244,7 +2676,7 @@ static bool stmtUsesF64(const Stmt &s) {
   switch (s.k) {
   case SK::Let: {
     const auto &n = static_cast<const SLet &>(s);
-    return n.inf == Type::F64 || exprUsesF64(*n.v);
+    return (n.inf == Type::F64 || n.inf == Type::F32) || exprUsesF64(*n.v);
   }
   case SK::Assign:
     return exprUsesF64(*static_cast<const SAssign &>(s).v);
@@ -2279,8 +2711,8 @@ static bool stmtUsesF64(const Stmt &s) {
 static bool usesF64Program(const Program &p) {
   for (const auto &f : p.f) {
     if (f.ex) continue;
-    if (f.ret == Type::F64) return true;
-    for (const auto &param : f.p) if (param.t == Type::F64) return true;
+    if (f.ret == Type::F64 || f.ret == Type::F32) return true;
+    for (const auto &param : f.p) if (param.t == Type::F64 || param.t == Type::F32) return true;
     if (blockUsesF64(f.b)) return true;
   }
   return false;
@@ -4188,6 +4620,7 @@ public:
       o_ << "#include <sys/types.h>\n";
       o_ << "#include <sys/socket.h>\n";
       o_ << "#include <netinet/in.h>\n";
+      o_ << "#include <netinet/tcp.h>\n";
       o_ << "#include <arpa/inet.h>\n";
       o_ << "#include <unistd.h>\n\n";
     }
@@ -4316,7 +4749,9 @@ private:
 
   static std::string cType(Type t) {
     switch (t) {
+    case Type::I32: return "int32_t";
     case Type::I64: return "int64_t";
+    case Type::F32: return "float";
     case Type::F64: return "double";
     case Type::Bool: return "ls_bool";
     case Type::Str: return "const char *";
@@ -4840,12 +5275,12 @@ private:
       o_ << "static inline const char *formatOutput_bool(ls_bool v) { return v ? \"true\" : \"false\"; }\n";
       o_ << "static inline const char *formatOutput_str(const char *v) { return v ? v : \"\"; }\n";
     }
-    o_ << "#define __ls_print_dispatch(x) _Generic((x), int64_t: print_i64, int: print_i64, double: print_f64, ls_bool: print_bool, const char *: print_str, char *: print_str, default: print_i64)(x)\n";
-    o_ << "#define __ls_println_dispatch(x) _Generic((x), int64_t: println_i64, int: println_i64, double: println_f64, ls_bool: println_bool, const char *: println_str, char *: println_str, default: println_i64)(x)\n";
+    o_ << "#define __ls_print_dispatch(x) _Generic((x), int64_t: print_i64, int: print_i64, float: print_f64, double: print_f64, ls_bool: print_bool, const char *: print_str, char *: print_str, default: print_i64)(x)\n";
+    o_ << "#define __ls_println_dispatch(x) _Generic((x), int64_t: println_i64, int: println_i64, float: println_f64, double: println_f64, ls_bool: println_bool, const char *: println_str, char *: println_str, default: println_i64)(x)\n";
     o_ << "#define print(x) __ls_print_dispatch(x)\n";
     o_ << "#define println(x) __ls_println_dispatch(x)\n\n";
     if (needsFormatOutputRuntime_) {
-      o_ << "#define __ls_format_dispatch(x) _Generic((x), int64_t: formatOutput_i64, int: formatOutput_i64, double: formatOutput_f64, ls_bool: formatOutput_bool, const char *: formatOutput_str, char *: formatOutput_str, default: formatOutput_i64)(x)\n";
+      o_ << "#define __ls_format_dispatch(x) _Generic((x), int64_t: formatOutput_i64, int: formatOutput_i64, float: formatOutput_f64, double: formatOutput_f64, ls_bool: formatOutput_bool, const char *: formatOutput_str, char *: formatOutput_str, default: formatOutput_i64)(x)\n";
       o_ << "#define formatOutput(x) __ls_format_dispatch(x)\n";
       o_ << "#define FormatOutput(x) __ls_format_dispatch(x)\n\n";
     }
@@ -4962,12 +5397,12 @@ private:
       o_ << "static inline const char *formatOutput_bool(ls_bool v) { return v ? \"true\" : \"false\"; }\n";
       o_ << "static inline const char *formatOutput_str(const char *v) { return v ? v : \"\"; }\n";
     }
-    o_ << "#define __ls_print_dispatch(x) _Generic((x), int64_t: print_i64, int: print_i64, double: print_f64, ls_bool: print_bool, const char *: print_str, char *: print_str, default: print_i64)(x)\n";
-    o_ << "#define __ls_println_dispatch(x) _Generic((x), int64_t: println_i64, int: println_i64, double: println_f64, ls_bool: println_bool, const char *: println_str, char *: println_str, default: println_i64)(x)\n";
+    o_ << "#define __ls_print_dispatch(x) _Generic((x), int64_t: print_i64, int: print_i64, float: print_f64, double: print_f64, ls_bool: print_bool, const char *: print_str, char *: print_str, default: print_i64)(x)\n";
+    o_ << "#define __ls_println_dispatch(x) _Generic((x), int64_t: println_i64, int: println_i64, float: println_f64, double: println_f64, ls_bool: println_bool, const char *: println_str, char *: println_str, default: println_i64)(x)\n";
     o_ << "#define print(x) __ls_print_dispatch(x)\n";
     o_ << "#define println(x) __ls_println_dispatch(x)\n\n";
     if (needsFormatOutputRuntime_) {
-      o_ << "#define __ls_format_dispatch(x) _Generic((x), int64_t: formatOutput_i64, int: formatOutput_i64, double: formatOutput_f64, ls_bool: formatOutput_bool, const char *: formatOutput_str, char *: formatOutput_str, default: formatOutput_i64)(x)\n";
+      o_ << "#define __ls_format_dispatch(x) _Generic((x), int64_t: formatOutput_i64, int: formatOutput_i64, float: formatOutput_f64, double: formatOutput_f64, ls_bool: formatOutput_bool, const char *: formatOutput_str, char *: formatOutput_str, default: formatOutput_i64)(x)\n";
       o_ << "#define formatOutput(x) __ls_format_dispatch(x)\n";
       o_ << "#define FormatOutput(x) __ls_format_dispatch(x)\n\n";
     }
@@ -7382,6 +7817,16 @@ private:
       o_ << "  ls_http_clients[id].sock = sock;\n";
       o_ << "  return id;\n";
       o_ << "}\n";
+      o_ << "static inline void ls_http_set_nodelay(ls_http_socket sock) {\n";
+      o_ << "#if defined(TCP_NODELAY)\n";
+      o_ << "  int one = 1;\n";
+#if defined(_WIN32)
+      o_ << "  (void)setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (const char *)&one, (int)sizeof(one));\n";
+#else
+      o_ << "  (void)setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &one, (int)sizeof(one));\n";
+#endif
+      o_ << "#endif\n";
+      o_ << "}\n";
       o_ << "#if defined(_WIN32)\n";
       o_ << "static inline int ls_http_send_chunk(ls_http_socket sock, const char *data, int chunk) {\n";
       o_ << "  return (int)send(sock, data, chunk, 0);\n";
@@ -7408,9 +7853,9 @@ private:
       o_ << "  }\n";
       o_ << "  return 1;\n";
       o_ << "}\n";
+      o_ << "static LS_THREAD_LOCAL char ls_http_recv_once_buf[16385];\n";
       o_ << "static inline const char *ls_http_recv_once(ls_http_socket sock) {\n";
-      o_ << "  char *buf = ls_scratch_take(16385);\n";
-      o_ << "  if (!buf) return \"\";\n";
+      o_ << "  char *buf = ls_http_recv_once_buf;\n";
       o_ << "  const int n = (int)recv(sock, buf, 16384, 0);\n";
       o_ << "  if (n <= 0) {\n";
       o_ << "    buf[0] = '\\0';\n";
@@ -7419,31 +7864,37 @@ private:
       o_ << "  buf[n] = '\\0';\n";
       o_ << "  return buf;\n";
       o_ << "}\n";
+      o_ << "static LS_THREAD_LOCAL char *ls_http_recv_heap = NULL;\n";
+      o_ << "static LS_THREAD_LOCAL size_t ls_http_recv_cap = 0;\n";
+      o_ << "static inline ls_bool ls_http_recv_reserve(size_t need) {\n";
+      o_ << "  if (need <= ls_http_recv_cap && ls_http_recv_heap) return 1;\n";
+      o_ << "  size_t next_cap = ls_http_recv_cap ? ls_http_recv_cap : 4096;\n";
+      o_ << "  while (next_cap < need && next_cap < 1048576) next_cap <<= 1;\n";
+      o_ << "  if (next_cap > 1048576) next_cap = 1048576;\n";
+      o_ << "  if (next_cap < need) return 0;\n";
+      o_ << "  char *next = (char *)realloc(ls_http_recv_heap, next_cap);\n";
+      o_ << "  if (!next) return 0;\n";
+      o_ << "  ls_http_recv_heap = next;\n";
+      o_ << "  ls_http_recv_cap = next_cap;\n";
+      o_ << "  return 1;\n";
+      o_ << "}\n";
       o_ << "static inline const char *ls_http_recv_to_close(ls_http_socket sock) {\n";
-      o_ << "  size_t cap = 4096;\n";
-      o_ << "  char *heap = (char *)malloc(cap);\n";
-      o_ << "  if (!heap) return \"\";\n";
+      o_ << "  if (!ls_http_recv_reserve(4096)) return \"\";\n";
       o_ << "  size_t len = 0;\n";
       o_ << "  while (1) {\n";
-      o_ << "    if (len + 1024 + 1 > cap) {\n";
-      o_ << "      size_t next_cap = cap << 1;\n";
-      o_ << "      if (next_cap > 1048576) next_cap = 1048576;\n";
-      o_ << "      if (next_cap <= cap) break;\n";
-      o_ << "      char *next = (char *)realloc(heap, next_cap);\n";
-      o_ << "      if (!next) break;\n";
-      o_ << "      heap = next;\n";
-      o_ << "      cap = next_cap;\n";
+      o_ << "    if (len + 1024 + 1 > ls_http_recv_cap) {\n";
+      o_ << "      const size_t need = len + 1024 + 1;\n";
+      o_ << "      if (need > 1048576) break;\n";
+      o_ << "      if (!ls_http_recv_reserve(need)) break;\n";
       o_ << "    }\n";
-      o_ << "    const int chunk = (int)(cap - len - 1);\n";
+      o_ << "    const int chunk = (int)(ls_http_recv_cap - len - 1);\n";
       o_ << "    if (chunk <= 0) break;\n";
-      o_ << "    const int n = (int)recv(sock, heap + len, chunk, 0);\n";
+      o_ << "    const int n = (int)recv(sock, ls_http_recv_heap + len, chunk, 0);\n";
       o_ << "    if (n <= 0) break;\n";
       o_ << "    len += (size_t)n;\n";
       o_ << "  }\n";
-      o_ << "  heap[len] = '\\0';\n";
-      o_ << "  const char *out = ls_scratch_dup(heap);\n";
-      o_ << "  free(heap);\n";
-      o_ << "  return out;\n";
+      o_ << "  ls_http_recv_heap[len] = '\\0';\n";
+      o_ << "  return ls_http_recv_heap;\n";
       o_ << "}\n";
       o_ << "static inline const char *ls_http_reason_text(int64_t status) {\n";
       o_ << "  switch (status) {\n";
@@ -7495,6 +7946,7 @@ private:
       o_ << "  if (!srv) return -1;\n";
       o_ << "  ls_http_socket c = accept(srv->sock, NULL, NULL);\n";
       o_ << "  if (ls_http_is_bad_socket(c)) return -1;\n";
+      o_ << "  ls_http_set_nodelay(c);\n";
       o_ << "  const int64_t id = ls_http_alloc_client(c);\n";
       o_ << "  if (id < 0) {\n";
       o_ << "    ls_http_close_socket(c);\n";
@@ -7553,6 +8005,7 @@ private:
       o_ << "    ls_http_close_socket(s);\n";
       o_ << "    return -1;\n";
       o_ << "  }\n";
+      o_ << "  ls_http_set_nodelay(s);\n";
       o_ << "  const int64_t id = ls_http_alloc_client(s);\n";
       o_ << "  if (id < 0) {\n";
       o_ << "    ls_http_close_socket(s);\n";
@@ -7582,8 +8035,12 @@ private:
       o_ << "  }\n";
       o_ << "}\n";
     }
+    o_ << "static inline int32_t to_i32(int64_t v) { return (int32_t)v; }\n";
+    o_ << "static inline float to_f32(double v) { return (float)v; }\n";
     o_ << "static inline int64_t to_i64(double v) { return (int64_t)v; }\n";
     o_ << "static inline double to_f64(int64_t v) { return (double)v; }\n";
+    o_ << "static inline int64_t bool_to_i64(ls_bool v) { return v ? 1LL : 0LL; }\n";
+    o_ << "static inline ls_bool i64_to_bool(int64_t v) { return v != 0 ? (ls_bool)1 : (ls_bool)0; }\n";
     o_ << "static inline uint64_t ls_abs_u64_i64(int64_t x) {\n";
     o_ << "  if (x >= 0) return (uint64_t)x;\n";
     o_ << "  return (uint64_t)(-(x + 1LL)) + 1ULL;\n";
@@ -7714,6 +8171,9 @@ private:
     o_ << "static int64_t ls_task_count = 0;\n";
     o_ << "static int64_t ls_task_free_ids[LS_MAX_TASKS];\n";
     o_ << "static int64_t ls_task_free_top = 0;\n";
+    o_ << "static int64_t ls_task_live_ids[LS_MAX_TASKS];\n";
+    o_ << "static int64_t ls_task_live_pos[LS_MAX_TASKS];\n";
+    o_ << "static int64_t ls_task_live_count = 0;\n";
     o_ << "static inline int64_t ls_task_alloc_id(void) {\n";
     o_ << "  if (ls_task_free_top > 0) return ls_task_free_ids[--ls_task_free_top];\n";
     o_ << "  if (ls_task_count >= LS_MAX_TASKS) return -1;\n";
@@ -7722,6 +8182,22 @@ private:
     o_ << "static inline void ls_task_release_id(int64_t id) {\n";
     o_ << "  if (id < 0 || id >= LS_MAX_TASKS) return;\n";
     o_ << "  if (ls_task_free_top < LS_MAX_TASKS) ls_task_free_ids[ls_task_free_top++] = id;\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_task_mark_live(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= LS_MAX_TASKS) return;\n";
+    o_ << "  if (ls_task_live_count >= LS_MAX_TASKS) return;\n";
+    o_ << "  ls_task_live_pos[id] = ls_task_live_count;\n";
+    o_ << "  ls_task_live_ids[ls_task_live_count++] = id;\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_task_mark_dead(int64_t id) {\n";
+    o_ << "  if (id < 0 || id >= LS_MAX_TASKS) return;\n";
+    o_ << "  const int64_t pos = ls_task_live_pos[id];\n";
+    o_ << "  if (pos < 0 || pos >= ls_task_live_count) return;\n";
+    o_ << "  const int64_t last = ls_task_live_ids[ls_task_live_count - 1];\n";
+    o_ << "  ls_task_live_ids[pos] = last;\n";
+    o_ << "  ls_task_live_pos[last] = pos;\n";
+    o_ << "  ls_task_live_pos[id] = -1;\n";
+    o_ << "  --ls_task_live_count;\n";
     o_ << "}\n";
     o_ << "#if defined(_WIN32)\n";
     o_ << "static DWORD WINAPI ls_task_entry(LPVOID arg) {\n";
@@ -7766,6 +8242,7 @@ private:
     o_ << "  }\n";
     o_ << "#endif\n";
     o_ << "  ls_tasks[id].active = 1;\n";
+    o_ << "  ls_task_mark_live(id);\n";
     o_ << "  return id;\n";
     o_ << "}\n";
     o_ << "static inline void await(int64_t task_id) {\n";
@@ -7777,12 +8254,13 @@ private:
     o_ << "#else\n";
     o_ << "  (void)pthread_join(ls_tasks[task_id].handle, NULL);\n";
     o_ << "#endif\n";
+    o_ << "  ls_task_mark_dead(task_id);\n";
     o_ << "  ls_tasks[task_id].active = 0;\n";
     o_ << "  ls_task_release_id(task_id);\n";
     o_ << "}\n";
     o_ << "static inline void await_all(void) {\n";
-    o_ << "  for (int64_t i = 0; i < LS_MAX_TASKS; ++i) {\n";
-    o_ << "    if (ls_tasks[i].active) await(i);\n";
+    o_ << "  while (ls_task_live_count > 0) {\n";
+    o_ << "    await(ls_task_live_ids[ls_task_live_count - 1]);\n";
     o_ << "  }\n";
     o_ << "}\n";
     o_ << "static inline int64_t ls_pow_i64(int64_t base, int64_t exp) {\n";
@@ -7798,14 +8276,15 @@ private:
     o_ << "static inline double ls_pow_f64(double a, double b) { return pow(a, b); }\n";
     o_ << "#define ls_pow(a,b) _Generic(((a)+(b)), double: ls_pow_f64, float: ls_pow_f64, default: ls_pow_i64)"
           "((a),(b))\n";
-    o_ << "#define __ls_print_dispatch(x) _Generic((x), int64_t: print_i64, int: print_i64, double: print_f64, "
-          "ls_bool: print_bool, const char *: print_str, char *: print_str, default: print_i64)(x)\n";
-    o_ << "#define __ls_println_dispatch(x) _Generic((x), int64_t: println_i64, int: println_i64, double: "
-          "println_f64, ls_bool: println_bool, const char *: println_str, char *: println_str, default: "
-          "println_i64)(x)\n";
+    o_ << "#define __ls_print_dispatch(x) _Generic((x), int64_t: print_i64, int: print_i64, float: print_f64, "
+          "double: print_f64, ls_bool: print_bool, const char *: print_str, char *: print_str, default: "
+          "print_i64)(x)\n";
+    o_ << "#define __ls_println_dispatch(x) _Generic((x), int64_t: println_i64, int: println_i64, float: "
+          "println_f64, double: println_f64, ls_bool: println_bool, const char *: println_str, char *: "
+          "println_str, default: println_i64)(x)\n";
     o_ << "#define __ls_format_dispatch(x) _Generic((x), int64_t: formatOutput_i64, int: formatOutput_i64, "
-          "double: formatOutput_f64, ls_bool: formatOutput_bool, const char *: formatOutput_str, char *: "
-          "formatOutput_str, default: formatOutput_i64)(x)\n";
+          "float: formatOutput_f64, double: formatOutput_f64, ls_bool: formatOutput_bool, const char *: "
+          "formatOutput_str, char *: formatOutput_str, default: formatOutput_i64)(x)\n";
     o_ << "#define ls_generic_max(a,b) _Generic(((a)+(b)), double: max_f64, float: max_f64, default: max_i64)"
           "((a),(b))\n";
     o_ << "#define ls_generic_min(a,b) _Generic(((a)+(b)), double: min_f64, float: min_f64, default: min_i64)"

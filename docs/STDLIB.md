@@ -450,7 +450,9 @@ end
 ```linescript
 parse_i64(s: str) -> i64
 parse_f64(s: str) -> f64
+to_i32(x: i64) -> i32
 to_i64(x: f64) -> i64
+to_f32(x: f64) -> f32
 to_f64(x: i64) -> f64
 max_i64(a: i64, b: i64) -> i64
 min_i64(a: i64, b: i64) -> i64
@@ -462,15 +464,16 @@ max_f64(a: f64, b: f64) -> f64
 min_f64(a: f64, b: f64) -> f64
 abs_f64(x: f64) -> f64
 clamp_f64(x: f64, lo: f64, hi: f64) -> f64
-max(a: i64|f64, b: i64|f64) -> i64|f64
-min(a: i64|f64, b: i64|f64) -> i64|f64
-abs(x: i64|f64) -> i64|f64
-clamp(x: i64|f64, lo: i64|f64, hi: i64|f64) -> i64|f64
+max(a: i32|i64|f32|f64, b: i32|i64|f32|f64) -> numeric
+min(a: i32|i64|f32|f64, b: i32|i64|f32|f64) -> numeric
+abs(x: i32|i64|f32|f64) -> numeric
+clamp(x: i32|i64|f32|f64, lo: i32|i64|f32|f64, hi: i32|i64|f32|f64) -> numeric
 ```
 
 Generic numeric helper notes:
 - `max/min/abs/clamp` are ad-hoc generic builtins for numeric types.
-- when all args are `i64`, result is `i64`; otherwise result is `f64`.
+- integer-only inputs return integer (`i32` or `i64`).
+- any floating input returns floating (`f32` or `f64`).
 - non-numeric arguments are compile-time errors.
 
 ## 11. Math

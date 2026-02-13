@@ -76,3 +76,7 @@ Stress cases:
 - `tests/stress/stress_integer_reduction.lsc`
 - `tests/stress/stress_mod_pipeline.lsc`
 - `tests/stress/stress_parallel_independent.lsc`
+- `tests/stress/stress_memory_reuse.lsc`
+- `tests/stress/stress_task_spawn_reuse.lsc`
+- `tests/stress/stress_http_burst_roundtrip.lsc`
+- `tests/stress/stress_edge_guarded_ranges.lsc`

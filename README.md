@@ -333,8 +333,12 @@ end
 
 - `declare`: define a variable.
 - `const`: immutable declared variable.
+- `class`: C++-style class declaration with fields/methods/constructor.
+- `this`: current class instance inside methods/constructor.
 - `i64`: 64-bit integer.
+- `i32`: 32-bit integer.
 - `f64`: 64-bit floating-point number.
+- `f32`: 32-bit floating-point number.
 - `bool`: boolean type.
 - `str`: string/text type.
 - `.stateSpeed()`: prints elapsed microseconds since the current function started.
@@ -342,7 +346,7 @@ end
 - `.freeConsole()` / `FreeConsole()`: detach the console window for windowed runs on Windows.
 - `input_i64()` / `input_f64()`: typed numeric input helpers.
 - `array_new` / `dict_new`: dynamic collection handles (`i64`) for arrays/maps.
-- `object_new`: OOP-style object-handle alias over dictionary storage.
+ - `object_new`: low-level object-handle alias over dictionary storage.
 - `gfx_new`: creates a native graphics canvas handle (`i64`).
 - `game_new`: creates a native 2D game/runtime handle (`i64`).
 - `phys_new`: creates a native physics object handle (`i64`).
@@ -422,7 +426,7 @@ Built-in helpers include:
 - `sqrt`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`
 - `exp`, `log`, `log10`, `floor`, `ceil`, `round`, `pow`
 - `pi`, `tau`, `deg_to_rad`, `rad_to_deg`
-- conversion/integer utils: `parse_i64`, `parse_f64`, `to_i64`, `to_f64`, `gcd`, `lcm`
+- conversion/integer utils: `parse_i64`, `parse_f64`, `to_i32`, `to_i64`, `to_f32`, `to_f64`, `gcd`, `lcm`
 - `max_i64`, `min_i64`, `abs_i64`, `clamp_i64`
 - `max_f64`, `min_f64`, `abs_f64`, `clamp_f64`
 - ad-hoc generic numeric helpers: `max`, `min`, `abs`, `clamp`
@@ -430,7 +434,8 @@ Built-in helpers include:
 ## Programming Models
 
 LineScript supports multiple styles:
-- OOP-style: model objects with `object_*`/`dict_*` handles and method-like functions.
+- OOP-style: use `class` syntax (`this.field`, `obj.method()`) or low-level `object_*`/`dict_*` handles.
+- class fields can optionally use `i32`/`f32`; `i64`/`f64` are still fully supported.
 - Functional style: pure functions + immutable locals via `declare const`.
 - Generic style: ad-hoc generic numeric helpers (`max/min/abs/clamp`) with type inference.
 
@@ -499,6 +504,7 @@ What it covers:
 - compile-failure checks and diagnostics
 - CLI hardening checks (`--cc` injection, extension validation)
 - fixed-workload stress programs with exact expected outputs
+- extreme stress coverage for memory-handle reuse, task concurrency reuse, HTTP burst roundtrips, and guarded edge-range execution
 - vectorization report check (clang `-Rpass`) to verify vectorized loop remarks are present
 
 ## Examples
