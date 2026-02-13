@@ -10,6 +10,8 @@ LineScript supports two native backends:
 - custom x86 ASM backend (`--backend asm`, or `--backend auto` to prefer ASM first)
 - optimized C backend (`--backend c`)
 
+Recent change history: `docs/CHANGELOG.md`.
+
 ## Quick Start
 
 Build and run a program in one command:
@@ -57,6 +59,31 @@ sum(a: i64, b: i64) -> i64 do
 end
 ```
 
+Top-level statements are also valid:
+
+```linescript
+print("milk")
+```
+
+Functions are optional, but callable when you need them:
+
+```linescript
+sudo() {
+  print("hi")
+}
+sudo()
+```
+
+Entry resolution for `--build` / `--run`:
+1. top-level statements, if present
+2. otherwise `main()`
+3. otherwise exactly one zero-argument function (any name)
+
+Script-first workflow (no required `main()`):
+- write normal top-level code and run it
+- add functions only when you want reuse/organization
+- mix top-level setup with function/class definitions as needed
+
 Variable declarations use `declare`:
 
 ```linescript
@@ -79,6 +106,16 @@ println("x")
 Print behavior:
 - `print(x)` prints the value of variable `x`.
 - `print("x")` prints the literal text `x`.
+
+Quick top-level example:
+
+```linescript
+declare sum = 0
+for i in 0..5 do
+  sum += i
+end
+println(sum)
+```
 
 Input:
 
@@ -200,6 +237,8 @@ option_free(o)
 result_free(r)
 ```
 
+LineScript also accepts a few compatibility-style CLI flags intended for quick checks and diagnostics.
+
 Format whole output blocks with optional end suffix:
 
 ```linescript
@@ -292,8 +331,24 @@ end
 
 Behavior:
 - `.format()` can be placed anywhere inside a function.
-- on Windows, when present in a program, builds use the GUI subsystem so no extra console window is created.
+- `.format()` keeps runtime output visible and suppresses compiler/build status chatter.
+- in `--run` mode with `.format()`, output stays clean (program output only).
 - when launched from an existing terminal, input/output still use that parent terminal.
+
+Superuser mode (advanced diagnostics):
+
+```linescript
+superuser()
+su.trace.on()
+println(su.capabilities())
+su.trace.off()
+```
+
+Behavior:
+- any `su.*` call without `superuser()` fails with `Not privileged`.
+- enabling `superuser()` prints a terminal warning because checks are intentionally relaxed.
+- with `.format()`, superuser diagnostics are routed to debug/error output while keeping normal program output clean.
+- superuser helpers include `su.memory.inspect()`, `su.limit.set(...)`, `su.compiler.inspect()`, `su.ir.dump()`, and `su.debug.hook("tag")`.
 
 Inline console detach marker (no closing statement):
 
@@ -342,7 +397,7 @@ end
 - `bool`: boolean type.
 - `str`: string/text type.
 - `.stateSpeed()`: prints elapsed microseconds since the current function started.
-- `.format()`: marks GUI-subsystem output mode on Windows (no extra console window).
+- `.format()`: enables clean output mode (suppresses compiler/build chatter, keeps program output).
 - `.freeConsole()` / `FreeConsole()`: detach the console window for windowed runs on Windows.
 - `input_i64()` / `input_f64()`: typed numeric input helpers.
 - `array_new` / `dict_new`: dynamic collection handles (`i64`) for arrays/maps.
@@ -382,6 +437,9 @@ Options:
 - `--max-speed` strongest speed profile (recommended default for release/perf)
 - `--keep-c` keep generated C output
 - `-o <path>` output path
+- custom `--flag-name` arguments are supported via `flag flag-name() do ... end` in source.
+- undefined custom flags print a warning and are ignored.
+- malformed flags (for example `---bad`) print a warning and are ignored.
 
 ## Speed Features
 
@@ -406,6 +464,7 @@ Options:
 - `for` loops with runtime `step == 0` terminate safely (zero iterations)
 - `parallel for` rejects `break`/`continue` and outer-variable assignments
 - deterministic regression suite for runtime + compile-failure behavior
+- undefined/malformed custom CLI flags are warned and ignored (non-fatal)
 
 ## Math Library
 

@@ -18,6 +18,15 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#if defined(_WIN32)
+#include <windows.h>
+#ifdef max
+#undef max
+#endif
+#ifdef min
+#undef min
+#endif
+#endif
 
 #if defined(_MSC_VER) && !defined(__clang__)
 // MSVC does not provide native __int128 in C++; keep source parseable in MSVC mode.
@@ -552,6 +561,8 @@ struct Param {
 };
 struct Fn {
   std::string n;
+  bool isCliFlag = false;
+  std::string cliFlagName;
   bool ex = false;
   bool inl = false;
   std::vector<Param> p;
@@ -562,7 +573,9 @@ struct Fn {
 };
 struct Program {
   std::vector<Fn> f;
+  std::vector<SP> top;
 };
+static constexpr const char *kScriptEntryName = "__linescript_script_main";
 
 struct ParsedClassField {
   std::string n;
@@ -586,8 +599,10 @@ public:
     while (!is(TokenKind::End)) {
       if (eat(TokenKind::KwClass)) {
         parseClass(p, t_[i_ - 1].span);
-      } else {
+      } else if (startsFunctionDecl()) {
         p.f.push_back(fn());
+      } else {
+        p.top.push_back(stmt());
       }
       skipNl();
     }
@@ -599,6 +614,7 @@ private:
   std::size_t i_ = 0;
   std::unordered_map<std::string, ClassInfo> classes_;
   std::unordered_map<std::string, std::string> varClass_;
+  std::unordered_set<std::string> cliFlagNames_;
   std::string currentClass_;
 
   const Token &cur() const { return t_[i_]; }
@@ -624,6 +640,120 @@ private:
   void skipNl() {
     while (eat(TokenKind::Newline)) {
     }
+  }
+  std::size_t skipNlFrom(std::size_t idx) const {
+    while (idx < t_.size() && t_[idx].kind == TokenKind::Newline) ++idx;
+    return idx;
+  }
+  static bool isValidCliFlagName(const std::string &name) {
+    if (name.empty()) return false;
+    if (name.front() == '-' || name.back() == '-') return false;
+    bool prevDash = false;
+    for (char c : name) {
+      const unsigned char u = static_cast<unsigned char>(c);
+      if (c == '-') {
+        if (prevDash) return false;
+        prevDash = true;
+        continue;
+      }
+      if (!std::isalnum(u) && c != '_') return false;
+      prevDash = false;
+    }
+    return true;
+  }
+  static std::string cliFlagSymbol(const std::string &name) {
+    std::string out = "__ls_flag_";
+    out.reserve(out.size() + name.size());
+    for (char c : name) out.push_back(c == '-' ? '_' : c);
+    return out;
+  }
+  bool startsFunctionDecl() const {
+    std::size_t j = skipNlFrom(i_);
+    bool sawModifier = false;
+    while (j < t_.size() && (t_[j].kind == TokenKind::KwInline || t_[j].kind == TokenKind::KwExtern)) {
+      sawModifier = true;
+      ++j;
+      j = skipNlFrom(j);
+    }
+    bool hasKwFn = false;
+    if (j < t_.size() && t_[j].kind == TokenKind::KwFn) {
+      hasKwFn = true;
+      ++j;
+      j = skipNlFrom(j);
+    }
+    if (j < t_.size() && t_[j].kind == TokenKind::Id && t_[j].text == "flag") {
+      ++j;
+      j = skipNlFrom(j);
+      if (j >= t_.size() || t_[j].kind != TokenKind::Id) return false;
+      ++j;
+      j = skipNlFrom(j);
+      while (j < t_.size() && t_[j].kind == TokenKind::Minus) {
+        ++j;
+        j = skipNlFrom(j);
+        if (j >= t_.size() || t_[j].kind != TokenKind::Id) return false;
+        ++j;
+        j = skipNlFrom(j);
+      }
+      return j < t_.size() && t_[j].kind == TokenKind::LPar;
+    }
+    if (j >= t_.size() || t_[j].kind != TokenKind::Id) return false;
+    ++j;
+    j = skipNlFrom(j);
+    if (j >= t_.size() || t_[j].kind != TokenKind::LPar) return false;
+
+    bool sawColon = false;
+    enum class ParamState { ExpectNameOrEnd, AfterName, ExpectTypeName };
+    ParamState st = ParamState::ExpectNameOrEnd;
+    ++j; // move to first token inside '(' ... ')'
+    for (;; ++j) {
+      if (j >= t_.size()) return false;
+      const TokenKind k = t_[j].kind;
+      if (k == TokenKind::Newline) continue;
+
+      if (st == ParamState::ExpectNameOrEnd) {
+        if (k == TokenKind::RPar) {
+          ++j;
+          break;
+        }
+        if (k == TokenKind::Id) {
+          st = ParamState::AfterName;
+          continue;
+        }
+        return false;
+      }
+
+      if (st == ParamState::AfterName) {
+        if (k == TokenKind::Colon) {
+          sawColon = true;
+          st = ParamState::ExpectTypeName;
+          continue;
+        }
+        if (k == TokenKind::Comma) {
+          st = ParamState::ExpectNameOrEnd;
+          continue;
+        }
+        if (k == TokenKind::RPar) {
+          ++j;
+          break;
+        }
+        return false;
+      }
+
+      if (st == ParamState::ExpectTypeName) {
+        if (k == TokenKind::Id) {
+          st = ParamState::AfterName;
+          continue;
+        }
+        return false;
+      }
+    }
+    j = skipNlFrom(j);
+    if (j >= t_.size()) return false;
+    const TokenKind next = t_[j].kind;
+    if (next == TokenKind::Arrow || next == TokenKind::KwThrows || next == TokenKind::KwDo || next == TokenKind::LBra)
+      return true;
+    if (next == TokenKind::Semi && sawModifier) return true;
+    return hasKwFn || sawModifier || sawColon;
   }
   Token need(TokenKind k, const std::string &msg) {
     if (!is(k)) throw CompileError(cur().span, msg);
@@ -730,6 +860,9 @@ private:
     if (receiver == "this") return currentClass_;
     auto it = varClass_.find(receiver);
     return it == varClass_.end() ? "" : it->second;
+  }
+  static bool isSuperuserNamespaceReceiver(const std::string &receiver) {
+    return receiver == "su" || receiver.rfind("su.", 0) == 0;
   }
 
   EP makeFieldLoadExpr(const std::string &receiver, const std::string &field, Type fieldType, const Span &s) {
@@ -963,6 +1096,46 @@ private:
   Fn fn() {
     Fn f;
     skipNl();
+    if (is(TokenKind::Id) && cur().text == "flag") {
+      ++i_;
+      Token firstSeg = need(TokenKind::Id, "expected flag name after 'flag'");
+      std::string cliName = firstSeg.text;
+      while (eat(TokenKind::Minus)) {
+        Token seg = need(TokenKind::Id, "expected flag name segment after '-'");
+        cliName += "-";
+        cliName += seg.text;
+      }
+      if (!isValidCliFlagName(cliName)) {
+        throw CompileError(firstSeg.span, "invalid flag name '" + cliName + "'");
+      }
+      if (!cliFlagNames_.insert(cliName).second) {
+        throw CompileError(firstSeg.span, "duplicate flag '" + cliName + "'");
+      }
+      f.s = firstSeg.span;
+      f.isCliFlag = true;
+      f.cliFlagName = cliName;
+      f.n = cliFlagSymbol(cliName);
+      need(TokenKind::LPar, "expected '(' after flag name");
+      if (!eat(TokenKind::RPar)) {
+        throw CompileError(cur().span, "flag functions must not take parameters");
+      }
+      if (eat(TokenKind::Arrow)) {
+        Type rt = parseType();
+        if (rt != Type::Void) throw CompileError(firstSeg.span, "flag functions must return void");
+      }
+      if (eat(TokenKind::KwThrows)) {
+        throw CompileError(firstSeg.span, "flag functions do not support 'throws'");
+      }
+      auto savedClass = currentClass_;
+      auto savedVarClass = varClass_;
+      currentClass_.clear();
+      varClass_.clear();
+      skipNl();
+      f.b = block();
+      currentClass_ = std::move(savedClass);
+      varClass_ = std::move(savedVarClass);
+      return f;
+    }
     while (true) {
       if (eat(TokenKind::KwInline)) {
         f.inl = true;
@@ -1508,21 +1681,25 @@ private:
           const std::string receiver = static_cast<EVar &>(*e).n;
           const std::string className = resolveReceiverClass(receiver);
           if (className.empty()) {
-            throw CompileError(memberTok.span, "method call requires a class-typed receiver");
+            if (!isSuperuserNamespaceReceiver(receiver)) {
+              throw CompileError(memberTok.span, "method call requires a class-typed receiver");
+            }
+            e = std::make_unique<ECall>(receiver + "." + memberTok.text, std::move(args), memberTok.span);
+          } else {
+            auto classIt = classes_.find(className);
+            if (classIt == classes_.end()) {
+              throw CompileError(memberTok.span, "unknown class '" + className + "'");
+            }
+            auto methodIt = classIt->second.methods.find(memberTok.text);
+            if (methodIt == classIt->second.methods.end()) {
+              throw CompileError(memberTok.span, "class '" + className + "' has no method '" + memberTok.text + "'");
+            }
+            std::vector<EP> callArgs;
+            callArgs.reserve(args.size() + 1);
+            callArgs.push_back(std::make_unique<EVar>(receiver, memberTok.span));
+            for (auto &arg : args) callArgs.push_back(std::move(arg));
+            e = std::make_unique<ECall>(methodIt->second, std::move(callArgs), memberTok.span);
           }
-          auto classIt = classes_.find(className);
-          if (classIt == classes_.end()) {
-            throw CompileError(memberTok.span, "unknown class '" + className + "'");
-          }
-          auto methodIt = classIt->second.methods.find(memberTok.text);
-          if (methodIt == classIt->second.methods.end()) {
-            throw CompileError(memberTok.span, "class '" + className + "' has no method '" + memberTok.text + "'");
-          }
-          std::vector<EP> callArgs;
-          callArgs.reserve(args.size() + 1);
-          callArgs.push_back(std::make_unique<EVar>(receiver, memberTok.span));
-          for (auto &arg : args) callArgs.push_back(std::move(arg));
-          e = std::make_unique<ECall>(methodIt->second, std::move(callArgs), memberTok.span);
         } else {
           if (e->k != EK::Var) {
             throw CompileError(memberTok.span, "field receiver must be an identifier");
@@ -1530,17 +1707,21 @@ private:
           const std::string receiver = static_cast<EVar &>(*e).n;
           const std::string className = resolveReceiverClass(receiver);
           if (className.empty()) {
-            throw CompileError(memberTok.span, "field access requires a class-typed receiver");
+            if (!isSuperuserNamespaceReceiver(receiver)) {
+              throw CompileError(memberTok.span, "field access requires a class-typed receiver");
+            }
+            e = std::make_unique<EVar>(receiver + "." + memberTok.text, memberTok.span);
+          } else {
+            auto classIt = classes_.find(className);
+            if (classIt == classes_.end()) {
+              throw CompileError(memberTok.span, "unknown class '" + className + "'");
+            }
+            auto fieldIt = classIt->second.fields.find(memberTok.text);
+            if (fieldIt == classIt->second.fields.end()) {
+              throw CompileError(memberTok.span, "class '" + className + "' has no field '" + memberTok.text + "'");
+            }
+            e = makeFieldLoadExpr(receiver, memberTok.text, fieldIt->second, memberTok.span);
           }
-          auto classIt = classes_.find(className);
-          if (classIt == classes_.end()) {
-            throw CompileError(memberTok.span, "unknown class '" + className + "'");
-          }
-          auto fieldIt = classIt->second.fields.find(memberTok.text);
-          if (fieldIt == classIt->second.fields.end()) {
-            throw CompileError(memberTok.span, "class '" + className + "' has no field '" + memberTok.text + "'");
-          }
-          e = makeFieldLoadExpr(receiver, memberTok.text, fieldIt->second, memberTok.span);
         }
         continue;
       }
@@ -1595,7 +1776,7 @@ struct Sig {
 
 class TypeCheck {
 public:
-  explicit TypeCheck(Program &p) : p_(p) {}
+  explicit TypeCheck(Program &p, bool superuserMode = false) : p_(p), superuserMode_(superuserMode) {}
   void run() {
     collect();
     for (Fn &f : p_.f) {
@@ -1603,10 +1784,14 @@ public:
     }
   }
   const std::unordered_map<std::string, Sig> &sigs() const { return sig_; }
+  const std::vector<std::string> &warnings() const { return warnings_; }
+  bool superuserMode() const { return superuserMode_; }
 
 private:
   Program &p_;
+  bool superuserMode_ = false;
   std::unordered_map<std::string, Sig> sig_;
+  std::vector<std::string> warnings_;
   struct Local {
     Type t = Type::I64;
     bool isConst = false;
@@ -1704,6 +1889,11 @@ private:
   void req(bool ok, const Span &s, const std::string &m) {
     if (!ok) throw CompileError(s, m);
   }
+  void warn(const Span &s, const std::string &m) {
+    std::ostringstream o;
+    o << "line " << s.line << ", col " << s.col << ": " << m;
+    warnings_.push_back(o.str());
+  }
 
   void addSig(const std::string &name, const std::vector<Type> &params, Type ret, const Span &s,
               std::vector<std::string> throws = {}) {
@@ -1731,9 +1921,18 @@ private:
     addSig("clock_us", {}, Type::I64, s);
     addSig("stateSpeed", {}, Type::Void, s);
     addSig(".stateSpeed", {}, Type::Void, s);
+    addSig("superuser", {}, Type::Void, s);
     addSig(".format", {}, Type::Void, s);
     addSig(".freeConsole", {}, Type::Void, s);
     addSig("FreeConsole", {}, Type::Void, s);
+    addSig("su.trace.on", {}, Type::Void, s);
+    addSig("su.trace.off", {}, Type::Void, s);
+    addSig("su.capabilities", {}, Type::Str, s);
+    addSig("su.memory.inspect", {}, Type::Str, s);
+    addSig("su.limit.set", {Type::I64, Type::I64}, Type::Void, s);
+    addSig("su.compiler.inspect", {}, Type::Str, s);
+    addSig("su.ir.dump", {}, Type::Void, s);
+    addSig("su.debug.hook", {Type::Str}, Type::Void, s);
     addSig("http_server_listen", {Type::I64}, Type::I64, s);
     addSig("http_server_accept", {Type::I64}, Type::I64, s);
     addSig("http_server_read", {Type::I64}, Type::Str, s);
@@ -2096,10 +2295,18 @@ private:
       req(en == Type::I64, s.s, "for range stop must be i64");
       req(sp == Type::I64, s.s, "for range step must be i64");
       if (n.step->k == EK::Int && static_cast<EInt &>(*n.step).v == 0) {
-        throw CompileError(s.s, "for range step cannot be zero");
+        if (superuserMode_) {
+          warn(s.s, "superuser mode: allowing for-range literal step 0 (loop becomes no-op)");
+        } else {
+          throw CompileError(s.s, "for range step cannot be zero");
+        }
       }
       if (n.parallel && hasLoopControl(n.b)) {
-        throw CompileError(s.s, "parallel for does not support break/continue");
+        if (superuserMode_) {
+          warn(s.s, "superuser mode: allowing break/continue inside parallel for");
+        } else {
+          throw CompileError(s.s, "parallel for does not support break/continue");
+        }
       }
       if (n.parallel) {
         std::unordered_set<std::string> forbidden;
@@ -2107,7 +2314,11 @@ private:
         for (const auto &[name, _] : l) forbidden.insert(name);
         forbidden.insert(n.n);
         if (hasForbiddenAssign(n.b, forbidden)) {
-          throw CompileError(s.s, "parallel for cannot assign to outer variables");
+          if (superuserMode_) {
+            warn(s.s, "superuser mode: allowing outer-variable writes in parallel for");
+          } else {
+            throw CompileError(s.s, "parallel for cannot assign to outer variables");
+          }
         }
       }
       auto inner = l;
@@ -2174,11 +2385,23 @@ private:
         return mark(promote(a, b));
       case BK::Div:
         if (!isNum(a) || !isNum(b)) throw CompileError(e.s, "arithmetic requires numeric");
-        if (isLiteralZero(*n.r)) throw CompileError(n.r->s, "division by zero");
+        if (isLiteralZero(*n.r)) {
+          if (superuserMode_) {
+            warn(n.r->s, "superuser mode: allowing division by zero expression");
+          } else {
+            throw CompileError(n.r->s, "division by zero");
+          }
+        }
         return mark(promote(a, b));
       case BK::Mod:
         if (!isInt(a) || !isInt(b)) throw CompileError(e.s, "'%' requires integer operands");
-        if (isLiteralZero(*n.r)) throw CompileError(n.r->s, "modulo by zero");
+        if (isLiteralZero(*n.r)) {
+          if (superuserMode_) {
+            warn(n.r->s, "superuser mode: allowing modulo by zero expression");
+          } else {
+            throw CompileError(n.r->s, "modulo by zero");
+          }
+        }
         return mark(promote(a, b));
       case BK::Pow:
         if (!isNum(a) || !isNum(b)) throw CompileError(e.s, "power operator requires numeric");
@@ -2201,6 +2424,13 @@ private:
     }
     case EK::Call: {
       auto &n = static_cast<ECall &>(e);
+      if (n.f == "superuser") {
+        if (!n.a.empty()) throw CompileError(e.s, "function 'superuser' expects 0 args");
+        return mark(Type::Void);
+      }
+      if (n.f.rfind("su.", 0) == 0 && !superuserMode_) {
+        throw CompileError(e.s, "Not privileged: call superuser() to enable developer superuser mode");
+      }
       if (n.f == "input") {
         if (n.a.empty()) return mark(Type::Str);
         if (n.a.size() == 1) {
@@ -2319,8 +2549,12 @@ private:
       const Sig &sg = it->second;
       for (const std::string &errName : sg.throws) {
         if (!throwsAllowed.count(errName)) {
-          throw CompileError(e.s, "call to '" + n.f + "' may throw '" + errName +
-                                       "'; add 'throws " + errName + "' to the current function");
+          if (superuserMode_) {
+            warn(e.s, "superuser mode: bypassing throws contract for '" + n.f + "' and '" + errName + "'");
+          } else {
+            throw CompileError(e.s, "call to '" + n.f + "' may throw '" + errName +
+                                         "'; add 'throws " + errName + "' to the current function");
+          }
         }
       }
       if (sg.p.size() != n.a.size())
@@ -4565,7 +4799,21 @@ static void optimize(Program &p, int passes) {
 
 class EmitC {
 public:
-  EmitC(const Program &p, std::unordered_set<std::string> inl) : p_(p), inl_(std::move(inl)) {
+  EmitC(const Program &p, std::unordered_set<std::string> inl, bool superuserMode = false,
+        std::vector<std::string> activeCliFlags = {})
+      : p_(p), inl_(std::move(inl)), superuserMode_(superuserMode) {
+    std::unordered_map<std::string, std::string> flagSymbols;
+    for (const Fn &f : p_.f) {
+      if (!f.isCliFlag) continue;
+      flagSymbols[f.cliFlagName] = f.n;
+    }
+    std::unordered_set<std::string> seenFlags;
+    for (const std::string &flagName : activeCliFlags) {
+      auto it = flagSymbols.find(flagName);
+      if (it == flagSymbols.end()) continue;
+      if (!seenFlags.insert(flagName).second) continue;
+      activeCliFlagCalls_.push_back(it->second);
+    }
     minimalRuntime_ = hasOnlyMinimalRuntimeCallsProgram(p_) && !usesStringRuntimeProgram(p_);
     ultraMinimalRuntime_ =
 #if defined(_WIN32)
@@ -4586,14 +4834,40 @@ public:
                         hasCallNamedProgram(p_, "http_client_send") ||
                         hasCallNamedProgram(p_, "http_client_read") ||
                         hasCallNamedProgram(p_, "http_client_close");
+    superuserDebugToStderr_ = superuserMode_ && hasFormatMarkerProgram(p_);
+    superuserIrDumpRequested_ = superuserMode_ && hasCallNamedProgram(p_, "su.ir.dump");
+    const Fn *mainEntry = nullptr;
+    const Fn *scriptEntry = nullptr;
+    const Fn *singleZeroArg = nullptr;
+    int zeroArgCount = 0;
     for (const Fn &f : p_.f) {
-      if (!f.ex && f.n == "main") {
-        entry_ = &f;
-        break;
+      if (f.ex || f.isCliFlag) continue;
+      if (f.n == "main") mainEntry = &f;
+      if (f.n == kScriptEntryName) scriptEntry = &f;
+      if (f.p.empty()) {
+        ++zeroArgCount;
+        if (!singleZeroArg) singleZeroArg = &f;
       }
+    }
+    if (scriptEntry) {
+      entry_ = scriptEntry;
+    } else if (mainEntry) {
+      entry_ = mainEntry;
+    } else if (zeroArgCount == 1) {
+      entry_ = singleZeroArg;
+    } else if (zeroArgCount == 0) {
+      entryError_ = "no runnable entry point found; add top-level statements, define main(), or define one zero-argument function";
+    } else {
+      entryError_ =
+          "ambiguous entry point: multiple zero-argument functions found; define main(), add top-level statements, or keep only one zero-argument function";
     }
   }
   bool ultraMinimalRuntime() const { return ultraMinimalRuntime_; }
+  bool hasEntry() const { return entry_ != nullptr; }
+  const std::string &entryError() const { return entryError_; }
+  bool superuserMode() const { return superuserMode_; }
+  bool superuserDebugToStderr() const { return superuserDebugToStderr_; }
+  bool superuserIrDumpRequested() const { return superuserIrDumpRequested_; }
   std::string run() {
     o_ << "#include <stdint.h>\n";
     o_ << "#include <stddef.h>\n\n";
@@ -4627,6 +4901,14 @@ public:
     o_ << "#include <pthread.h>\n\n";
 #endif
     o_ << "typedef uint8_t ls_bool;\n\n";
+    o_ << "static ls_bool ls_su_enabled = 0;\n";
+    o_ << "static ls_bool ls_su_trace = 0;\n";
+    o_ << "static int64_t ls_su_step_limit = 0;\n";
+    o_ << "static int64_t ls_su_step_count = 0;\n";
+    o_ << "static int64_t ls_su_mem_limit = 0;\n";
+    o_ << "static int64_t ls_su_mem_in_use = 0;\n";
+    o_ << "static ls_bool ls_su_debug_to_stderr = "
+       << (superuserDebugToStderr_ ? "1" : "0") << ";\n\n";
     o_ << "#if defined(_MSC_VER) && !defined(__clang__)\n";
     o_ << "typedef int64_t LS_I128;\n";
     o_ << "#else\n";
@@ -4690,10 +4972,16 @@ private:
   bool needsStateSpeedRuntime_ = false;
   bool needsFormatOutputRuntime_ = false;
   bool needsHttpRuntime_ = false;
+  bool superuserMode_ = false;
+  bool superuserDebugToStderr_ = false;
+  bool superuserIrDumpRequested_ = false;
+  std::vector<std::string> activeCliFlagCalls_;
   std::ostringstream o_;
   const Fn *entry_ = nullptr;
+  std::string entryError_;
   int loopSerial_ = 0;
   std::string stateSpeedVar_;
+  std::string activeFnName_;
   Type activeFnRet_ = Type::Void;
   struct CleanupItem {
     std::string var;
@@ -4743,7 +5031,7 @@ private:
   }
 
   std::string cFnName(const std::string &n) const {
-    if (entry_ && n == "main") return kEntryName;
+    if (entry_ && n == entry_->n) return kEntryName;
     return n;
   }
 
@@ -4778,6 +5066,21 @@ private:
     case BK::Or: return "||";
     }
     return "?";
+  }
+  static const char *stmtKindName(SK k) {
+    switch (k) {
+    case SK::Let: return "declare";
+    case SK::Assign: return "assign";
+    case SK::Expr: return "expr";
+    case SK::Ret: return "return";
+    case SK::If: return "if";
+    case SK::While: return "while";
+    case SK::For: return "for";
+    case SK::FormatBlock: return "format_block";
+    case SK::Break: return "break";
+    case SK::Continue: return "continue";
+    }
+    return "stmt";
   }
   static std::string dLit(double v) {
     std::ostringstream s;
@@ -5861,22 +6164,40 @@ private:
     o_ << "}\n";
     o_ << "static inline int64_t mem_alloc(int64_t bytes) {\n";
     o_ << "  if (bytes <= 0) return 0;\n";
-    o_ << "  if ((uint64_t)bytes > (uint64_t)SIZE_MAX) return 0;\n";
-    o_ << "  void *p = malloc((size_t)bytes);\n";
-    o_ << "  return p ? (int64_t)(intptr_t)p : 0;\n";
+    o_ << "  if ((uint64_t)bytes > (uint64_t)(SIZE_MAX - sizeof(int64_t))) return 0;\n";
+    o_ << "  if (ls_su_enabled && ls_su_mem_limit > 0 && (ls_su_mem_in_use + bytes) > ls_su_mem_limit) return 0;\n";
+    o_ << "  uint8_t *raw = (uint8_t *)malloc((size_t)bytes + sizeof(int64_t));\n";
+    o_ << "  if (!raw) return 0;\n";
+    o_ << "  *((int64_t *)raw) = bytes;\n";
+    o_ << "  ls_su_mem_in_use += bytes;\n";
+    o_ << "  return (int64_t)(intptr_t)(raw + sizeof(int64_t));\n";
     o_ << "}\n";
     o_ << "static inline int64_t mem_realloc(int64_t ptr, int64_t bytes) {\n";
+    o_ << "  if (ptr == 0) return mem_alloc(bytes);\n";
+    o_ << "  uint8_t *old_payload = (uint8_t *)(intptr_t)ptr;\n";
+    o_ << "  uint8_t *old_raw = old_payload - sizeof(int64_t);\n";
+    o_ << "  int64_t old_bytes = *((int64_t *)old_raw);\n";
     o_ << "  if (bytes <= 0) {\n";
-    o_ << "    if (ptr != 0) free((void *)(intptr_t)ptr);\n";
+    o_ << "    if (old_bytes > 0 && ls_su_mem_in_use >= old_bytes) ls_su_mem_in_use -= old_bytes;\n";
+    o_ << "    free(old_raw);\n";
     o_ << "    return 0;\n";
     o_ << "  }\n";
-    o_ << "  if ((uint64_t)bytes > (uint64_t)SIZE_MAX) return 0;\n";
-    o_ << "  void *base = ptr ? (void *)(intptr_t)ptr : NULL;\n";
-    o_ << "  void *p = realloc(base, (size_t)bytes);\n";
-    o_ << "  return p ? (int64_t)(intptr_t)p : 0;\n";
+    o_ << "  if ((uint64_t)bytes > (uint64_t)(SIZE_MAX - sizeof(int64_t))) return 0;\n";
+    o_ << "  const int64_t delta = bytes - old_bytes;\n";
+    o_ << "  if (ls_su_enabled && ls_su_mem_limit > 0 && delta > 0 && (ls_su_mem_in_use + delta) > ls_su_mem_limit) return 0;\n";
+    o_ << "  uint8_t *raw = (uint8_t *)realloc(old_raw, (size_t)bytes + sizeof(int64_t));\n";
+    o_ << "  if (!raw) return 0;\n";
+    o_ << "  *((int64_t *)raw) = bytes;\n";
+    o_ << "  ls_su_mem_in_use += delta;\n";
+    o_ << "  return (int64_t)(intptr_t)(raw + sizeof(int64_t));\n";
     o_ << "}\n";
     o_ << "static inline void mem_free(int64_t ptr) {\n";
-    o_ << "  if (ptr != 0) free((void *)(intptr_t)ptr);\n";
+    o_ << "  if (ptr == 0) return;\n";
+    o_ << "  uint8_t *payload = (uint8_t *)(intptr_t)ptr;\n";
+    o_ << "  uint8_t *raw = payload - sizeof(int64_t);\n";
+    o_ << "  int64_t bytes = *((int64_t *)raw);\n";
+    o_ << "  if (bytes > 0 && ls_su_mem_in_use >= bytes) ls_su_mem_in_use -= bytes;\n";
+    o_ << "  free(raw);\n";
     o_ << "}\n";
     o_ << "static inline void mem_set(int64_t ptr, int64_t byte_val, int64_t bytes) {\n";
     o_ << "  if (ptr == 0 || bytes <= 0) return;\n";
@@ -8156,6 +8477,79 @@ private:
     o_ << "}\n";
     o_ << "static inline const char *formatOutput_bool(ls_bool v) { return v ? \"true\" : \"false\"; }\n";
     o_ << "static inline const char *formatOutput_str(const char *v) { return v ? v : \"\"; }\n";
+    o_ << "static inline void ls_su_emit_debug(const char *msg) {\n";
+    o_ << "  if (!msg) return;\n";
+    o_ << "  FILE *out = ls_su_debug_to_stderr ? stderr : stdout;\n";
+    o_ << "  fputs(msg, out);\n";
+    o_ << "  fflush(out);\n";
+#if defined(_WIN32)
+    o_ << "  OutputDebugStringA(msg);\n";
+#endif
+    o_ << "}\n";
+    o_ << "static inline void superuser(void) {\n";
+    o_ << "  ls_su_enabled = 1;\n";
+    o_ << "  ls_su_emit_debug(\"[superuser] developer privileges enabled\\n\");\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_su_guard_step(void) {\n";
+    o_ << "  if (!ls_su_enabled) return;\n";
+    o_ << "  if (ls_su_step_limit <= 0) return;\n";
+    o_ << "  ++ls_su_step_count;\n";
+    o_ << "  if (ls_su_step_count > ls_su_step_limit) {\n";
+    o_ << "    ls_su_emit_debug(\"[superuser] runtime step limit reached\\n\");\n";
+    o_ << "    abort();\n";
+    o_ << "  }\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_su_trace_stmt(const char *fn, int64_t line, const char *kind) {\n";
+    o_ << "  if (!ls_su_enabled || !ls_su_trace) return;\n";
+    o_ << "  char *buf = ls_scratch_take(192);\n";
+    o_ << "  if (!buf) return;\n";
+    o_ << "  (void)snprintf(buf, 192, \"[trace] %s:%lld %s\\n\", fn ? fn : \"<fn>\", (long long)line, kind ? kind : \"stmt\");\n";
+    o_ << "  ls_su_emit_debug(buf);\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_su_trace_on(void) {\n";
+    o_ << "  if (!ls_su_enabled) { ls_su_emit_debug(\"[superuser] Not privileged\\n\"); return; }\n";
+    o_ << "  ls_su_trace = 1;\n";
+    o_ << "  ls_su_emit_debug(\"[superuser] trace enabled\\n\");\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_su_trace_off(void) {\n";
+    o_ << "  if (!ls_su_enabled) { ls_su_emit_debug(\"[superuser] Not privileged\\n\"); return; }\n";
+    o_ << "  ls_su_trace = 0;\n";
+    o_ << "  ls_su_emit_debug(\"[superuser] trace disabled\\n\");\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_su_limit_set(int64_t step_limit, int64_t mem_limit) {\n";
+    o_ << "  if (!ls_su_enabled) { ls_su_emit_debug(\"[superuser] Not privileged\\n\"); return; }\n";
+    o_ << "  ls_su_step_limit = step_limit < 0 ? 0 : step_limit;\n";
+    o_ << "  ls_su_mem_limit = mem_limit < 0 ? 0 : mem_limit;\n";
+    o_ << "}\n";
+    o_ << "static inline const char *ls_su_capabilities(void) {\n";
+    o_ << "  char *buf = ls_scratch_take(256);\n";
+    o_ << "  if (!buf) return \"\";\n";
+    o_ << "  (void)snprintf(buf, 256, \"superuser=%s,trace=%s,step_limit=%lld,mem_limit=%lld\", ls_su_enabled ? \"on\" : \"off\", ls_su_trace ? \"on\" : \"off\", (long long)ls_su_step_limit, (long long)ls_su_mem_limit);\n";
+    o_ << "  return buf;\n";
+    o_ << "}\n";
+    o_ << "static inline const char *ls_su_memory_inspect(void) {\n";
+    o_ << "  char *buf = ls_scratch_take(256);\n";
+    o_ << "  if (!buf) return \"\";\n";
+    o_ << "  (void)snprintf(buf, 256, \"mem_in_use=%lld,mem_limit=%lld\", (long long)ls_su_mem_in_use, (long long)ls_su_mem_limit);\n";
+    o_ << "  return buf;\n";
+    o_ << "}\n";
+    o_ << "static inline const char *ls_su_compiler_inspect(void) {\n";
+    o_ << "  char *buf = ls_scratch_take(256);\n";
+    o_ << "  if (!buf) return \"\";\n";
+    o_ << "  (void)snprintf(buf, 256, \"backend=generated-c,superuser=%s,trace=%s\", ls_su_enabled ? \"on\" : \"off\", ls_su_trace ? \"on\" : \"off\");\n";
+    o_ << "  return buf;\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_su_ir_dump(void) {\n";
+    o_ << "  if (!ls_su_enabled) { ls_su_emit_debug(\"[superuser] Not privileged\\n\"); return; }\n";
+    o_ << "  ls_su_emit_debug(\"[superuser] IR/C dump requested for this build\\n\");\n";
+    o_ << "}\n";
+    o_ << "static inline void ls_su_debug_hook(const char *tag) {\n";
+    o_ << "  if (!ls_su_enabled) { ls_su_emit_debug(\"[superuser] Not privileged\\n\"); return; }\n";
+    o_ << "  char *buf = ls_scratch_take(192);\n";
+    o_ << "  if (!buf) return;\n";
+    o_ << "  (void)snprintf(buf, 192, \"[superuser-hook] %s\\n\", tag ? tag : \"<null>\");\n";
+    o_ << "  ls_su_emit_debug(buf);\n";
+    o_ << "}\n";
     o_ << "typedef void (*ls_task_fn)(void);\n";
     o_ << "#define LS_MAX_TASKS 1024\n";
     o_ << "typedef struct {\n";
@@ -8381,6 +8775,60 @@ private:
         }
         return "ls_generic_clamp(" + e(*n.a[0]) + ", " + e(*n.a[1]) + ", " + e(*n.a[2]) + ")";
       }
+      if (n.f == "superuser") {
+        if (!n.a.empty()) {
+          throw CompileError(x.s, "internal superuser emit arity error");
+        }
+        return "superuser()";
+      }
+      if (n.f == "su.trace.on") {
+        if (!n.a.empty()) {
+          throw CompileError(x.s, "internal su.trace.on emit arity error");
+        }
+        return "ls_su_trace_on()";
+      }
+      if (n.f == "su.trace.off") {
+        if (!n.a.empty()) {
+          throw CompileError(x.s, "internal su.trace.off emit arity error");
+        }
+        return "ls_su_trace_off()";
+      }
+      if (n.f == "su.capabilities") {
+        if (!n.a.empty()) {
+          throw CompileError(x.s, "internal su.capabilities emit arity error");
+        }
+        return "ls_su_capabilities()";
+      }
+      if (n.f == "su.memory.inspect") {
+        if (!n.a.empty()) {
+          throw CompileError(x.s, "internal su.memory.inspect emit arity error");
+        }
+        return "ls_su_memory_inspect()";
+      }
+      if (n.f == "su.limit.set") {
+        if (n.a.size() != 2) {
+          throw CompileError(x.s, "internal su.limit.set emit arity error");
+        }
+        return "ls_su_limit_set(" + e(*n.a[0]) + ", " + e(*n.a[1]) + ")";
+      }
+      if (n.f == "su.compiler.inspect") {
+        if (!n.a.empty()) {
+          throw CompileError(x.s, "internal su.compiler.inspect emit arity error");
+        }
+        return "ls_su_compiler_inspect()";
+      }
+      if (n.f == "su.ir.dump") {
+        if (!n.a.empty()) {
+          throw CompileError(x.s, "internal su.ir.dump emit arity error");
+        }
+        return "ls_su_ir_dump()";
+      }
+      if (n.f == "su.debug.hook") {
+        if (n.a.size() != 1) {
+          throw CompileError(x.s, "internal su.debug.hook emit arity error");
+        }
+        return "ls_su_debug_hook(" + e(*n.a[0]) + ")";
+      }
       if (n.f == "spawn") {
         if (n.a.size() != 1 || n.a[0]->k != EK::Call) {
           throw CompileError(x.s, "internal spawn emit error");
@@ -8439,6 +8887,13 @@ private:
   }
 
   void stmt(const Stmt &s, int k) {
+    if (superuserMode_) {
+      ind(o_, k);
+      o_ << "ls_su_guard_step();\n";
+      ind(o_, k);
+      o_ << "ls_su_trace_stmt(" << cStrLit(activeFnName_) << ", " << static_cast<unsigned long long>(s.s.line) << "ULL, "
+         << cStrLit(stmtKindName(s.k)) << ");\n";
+    }
     switch (s.k) {
     case SK::Let: {
       auto &n = static_cast<const SLet &>(s);
@@ -8969,9 +9424,11 @@ private:
   void fn(const Fn &f) {
     const int fnId = loopSerial_++;
     const std::string prevStateSpeedVar = stateSpeedVar_;
+    const std::string prevActiveFnName = activeFnName_;
     const Type prevActiveFnRet = activeFnRet_;
     const bool hasStateSpeed = hasCallNamedBlock(f.b, "stateSpeed") || hasCallNamedBlock(f.b, ".stateSpeed");
     stateSpeedVar_ = hasStateSpeed ? "__ls_fn_start_us_" + std::to_string(fnId) : "";
+    activeFnName_ = f.n;
     activeFnRet_ = f.ret;
     const bool forceInlineEntry = ultraMinimalRuntime_ && entry_ && (&f == entry_);
     if (forceInlineEntry) {
@@ -8991,15 +9448,22 @@ private:
     if (f.ret == Type::Void) o_ << "  return;\n";
     o_ << "}\n\n";
     stateSpeedVar_ = prevStateSpeedVar;
+    activeFnName_ = prevActiveFnName;
     activeFnRet_ = prevActiveFnRet;
   }
 
   void emitEntryWrapper() {
-    if (!entry_->p.empty()) throw CompileError(entry_->s, "entry function 'main' must have zero parameters");
+    if (!entry_->p.empty()) throw CompileError(entry_->s, "entry function must have zero parameters");
     if (ultraMinimalRuntime_) {
       o_ << "void __stdcall mainCRTStartup(void) {\n";
+      for (const std::string &flagFn : activeCliFlagCalls_) {
+        o_ << "  " << flagFn << "();\n";
+      }
       if (entry_->ret == Type::Void) {
         o_ << "  " << kEntryName << "();\n";
+        o_ << "  ExitProcess(0u);\n";
+      } else if (entry_->ret == Type::Str) {
+        o_ << "  (void)" << kEntryName << "();\n";
         o_ << "  ExitProcess(0u);\n";
       } else {
         o_ << "  const int rc = (int)" << kEntryName << "();\n";
@@ -9009,8 +9473,14 @@ private:
       return;
     }
     o_ << "int main(void) {\n";
+    for (const std::string &flagFn : activeCliFlagCalls_) {
+      o_ << "  " << flagFn << "();\n";
+    }
     if (entry_->ret == Type::Void) {
       o_ << "  " << kEntryName << "();\n";
+      o_ << "  return 0;\n";
+    } else if (entry_->ret == Type::Str) {
+      o_ << "  (void)" << kEntryName << "();\n";
       o_ << "  return 0;\n";
     } else {
       o_ << "  return (int)" << kEntryName << "();\n";
@@ -9034,6 +9504,23 @@ static void writeFile(const std::filesystem::path &p, const std::string &c) {
   if (!out) throw std::runtime_error("failed writing: " + p.string());
 }
 
+static bool gSuperuserVerbose = false;
+static bool gSuperuserDebugToStderr = false;
+static void setSuperuserLogging(bool enabled, bool debugToStderr) {
+  gSuperuserVerbose = enabled;
+  gSuperuserDebugToStderr = debugToStderr;
+}
+static void superuserLog(const std::string &msg) {
+  if (!gSuperuserVerbose) return;
+  std::ostream &os = gSuperuserDebugToStderr ? std::cerr : std::cout;
+  os << "[superuser] " << msg << '\n';
+  os.flush();
+#if defined(_WIN32)
+  std::string line = "[superuser] " + msg + "\n";
+  OutputDebugStringA(line.c_str());
+#endif
+}
+
 struct Opt {
   std::vector<std::filesystem::path> inputs;
   std::filesystem::path out;
@@ -9045,7 +9532,47 @@ struct Opt {
   bool keepC = false;
   bool maxSpeed = false;
   int passes = 12;
+  bool infoOnly = false;
+  std::vector<std::string> infoMessages;
+  std::vector<std::string> cliFlags;
 };
+
+// Version policy:
+// - Internal half-step increments by 1 per update (0.0.0.5 granularity).
+// - Displayed version is x.y.z and bumps patch every 2 half-steps.
+static constexpr int kLineScriptVerMajor = 1;
+static constexpr int kLineScriptVerMinor = 4;
+static constexpr int kLineScriptVerPatchBase = 4;
+static constexpr int kLineScriptVerHalfSteps = 2;  // 2 => internal 1.4.5, displayed 1.4.5
+
+static std::string lineScriptVersionDisplay() {
+  const int patch = kLineScriptVerPatchBase + (kLineScriptVerHalfSteps / 2);
+  return std::to_string(kLineScriptVerMajor) + "." + std::to_string(kLineScriptVerMinor) + "." + std::to_string(patch);
+}
+
+static bool isKnownInfoFlagBody(const std::string &body) {
+  return body == "LineScript" || body == "super-speed" || body == "what" || body == "hlep" || body == "max-sped";
+}
+static bool isValidCliFlagBody(const std::string &body) {
+  if (body.empty()) return false;
+  if (body.front() == '-' || body.back() == '-') return false;
+  bool prevDash = false;
+  for (char c : body) {
+    const unsigned char u = static_cast<unsigned char>(c);
+    if (c == '-') {
+      if (prevDash) return false;
+      prevDash = true;
+      continue;
+    }
+    if (!std::isalnum(u) && c != '_') return false;
+    prevDash = false;
+  }
+  return true;
+}
+static std::string cliFlagBodyFromArg(const std::string &arg) {
+  if (arg.rfind("--", 0) != 0) return "";
+  return arg.substr(2);
+}
 
 static void usage() {
   std::cerr << "LineScript compiler\n";
@@ -9059,6 +9586,12 @@ static void usage() {
   std::cerr << "  --passes <n>    greedy optimization passes (default: 12)\n";
   std::cerr << "  --max-speed     favor highest runtime speed flags\n";
   std::cerr << "  --keep-c        keep generated C when --build\n";
+  std::cerr << "  --LineScript    print LineScript version\n";
+  std::cerr << "  --super-speed   reserved tuning flag\n";
+  std::cerr << "  --max-sped      reserved tuning alias\n";
+  std::cerr << "  --what          reserved query flag\n";
+  std::cerr << "  --hlep          reserved typo helper\n";
+  std::cerr << "  --<name>        invoke matching 'flag name()' function if defined\n";
   std::cerr << "  --help\n";
 }
 
@@ -9110,6 +9643,21 @@ static Opt parseOpt(int argc, char **argv) {
     if (a == "--help") {
       usage();
       std::exit(0);
+    } else if (a == "--LineScript") {
+      o.infoMessages.push_back("LineScript version " + lineScriptVersionDisplay());
+      o.cliFlags.push_back(a);
+    } else if (a == "--super-speed") {
+      o.infoMessages.push_back("super speed activated, hold your horses..");
+      o.cliFlags.push_back(a);
+    } else if (a == "--what") {
+      o.infoMessages.push_back("what? are you asking me?");
+      o.cliFlags.push_back(a);
+    } else if (a == "--hlep") {
+      o.infoMessages.push_back("i think you made a little spelling mistake in your flag there");
+      o.cliFlags.push_back(a);
+    } else if (a == "--max-sped") {
+      o.infoMessages.push_back("hurga durga doo! max sped activated!");
+      o.cliFlags.push_back(a);
     } else if (a == "--check") {
       o.check = true;
     } else if (a == "--build") {
@@ -9143,7 +9691,11 @@ static Opt parseOpt(int argc, char **argv) {
       if (i + 1 >= argc) throw std::runtime_error("missing value for -o");
       o.out = argv[++i];
     } else if (!a.empty() && a[0] == '-') {
-      throw std::runtime_error("unknown option: " + a);
+      if (a.rfind("--", 0) == 0) {
+        o.cliFlags.push_back(a);
+      } else {
+        throw std::runtime_error("unknown option: " + a);
+      }
     } else {
       std::filesystem::path in = a;
       if (!isSourceExt(in)) {
@@ -9152,7 +9704,13 @@ static Opt parseOpt(int argc, char **argv) {
       o.inputs.push_back(std::move(in));
     }
   }
-  if (o.inputs.empty()) throw std::runtime_error("input file is required");
+  if (o.inputs.empty()) {
+    if (!o.infoMessages.empty() && !o.check && !o.build && !o.run) {
+      o.infoOnly = true;
+      return o;
+    }
+    throw std::runtime_error("input file is required");
+  }
   validateCompilerCommand(o.cc);
   if (!isValidBackend(o.backend)) {
     throw std::runtime_error("invalid --backend value (expected auto|c|asm): " + o.backend);
@@ -9167,6 +9725,15 @@ static std::unordered_set<std::string> inlineSet(const Program &p) {
   std::unordered_set<std::string> s;
   for (const auto &[n, _] : inlineCands(p)) s.insert(n);
   return s;
+}
+
+static std::unordered_map<std::string, std::string> cliFlagDefinitions(const Program &p) {
+  std::unordered_map<std::string, std::string> defs;
+  for (const auto &f : p.f) {
+    if (!f.isCliFlag) continue;
+    defs[f.cliFlagName] = f.n;
+  }
+  return defs;
 }
 
 static std::string q(const std::filesystem::path &p) { return "\"" + p.string() + "\""; }
@@ -9230,13 +9797,13 @@ static std::string flagsForAsmLink(const std::string &flags) {
 
 static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, bool hasParallelFor,
                   bool hasWinGraphicsDep, bool hasWinNetDep, bool hasPosixThreadDep, bool ultraMinimalRuntime,
-                  bool hasInteractiveInput) {
+                  bool hasInteractiveInput, bool superuserMode, bool superuserIrDump) {
 #if defined(_WIN32)
   (void)hasPosixThreadDep;
+  (void)hasInteractiveInput;
 #endif
 #if !defined(_WIN32)
   (void)ultraMinimalRuntime;
-  (void)hasInteractiveInput;
   (void)hasWinNetDep;
   (void)hasWinGraphicsDep;
 #endif
@@ -9244,7 +9811,14 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   if (!o.build) {
     auto out = o.out.empty() ? std::filesystem::path(primaryIn).replace_extension(".c") : o.out;
     validatePathForShell(out, "output path");
+    if (superuserMode) superuserLog("emit-only mode: writing C output to " + out.string());
     writeFile(out, cCode);
+    if (superuserMode && superuserIrDump) {
+      auto irOut = std::filesystem::path(primaryIn).replace_extension(".ir.c");
+      validatePathForShell(irOut, "superuser IR dump path");
+      writeFile(irOut, cCode);
+      superuserLog("superuser IR dump written to " + irOut.string());
+    }
     if (!cleanOutputMode) std::cout << "Emitted C: " << out << '\n';
     return 0;
   }
@@ -9265,7 +9839,17 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   validateCompilerCommand(o.cc);
   validatePathForShell(c, "generated C path");
   validatePathForShell(bin, "output binary path");
+  if (superuserMode) {
+    superuserLog("build mode: generating C at " + c.string());
+    superuserLog("target binary: " + bin.string());
+  }
   writeFile(c, cCode);
+  if (superuserMode && superuserIrDump) {
+    auto irOut = std::filesystem::path(primaryIn).replace_extension(".ir.c");
+    validatePathForShell(irOut, "superuser IR dump path");
+    writeFile(irOut, cCode);
+    superuserLog("superuser IR dump written to " + irOut.string());
+  }
   const std::string ccNorm = lowerCopy(stripOuterQuotes(o.cc));
   const bool clangLike = ccNorm.find("clang") != std::string::npos;
   const bool gccLike = (ccNorm.find("gcc") != std::string::npos) || (ccNorm.find("g++") != std::string::npos);
@@ -9340,16 +9924,16 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
         "-O3 -ffast-math -flto -march=native -mtune=native -funroll-loops -fstrict-aliasing -fomit-frame-pointer "
         "-fno-stack-protector -fno-builtin -fno-builtin-strlen -fno-math-errno -fno-trapping-math "
         "-ffp-contract=fast -fvectorize -fslp-vectorize -DNDEBUG "
-        "-nostdlib -fuse-ld=lld -Wl,/entry:mainCRTStartup -Wl,/subsystem:windows -Wl,/OPT:REF -Wl,/OPT:ICF "
+        "-nostdlib -fuse-ld=lld -Wl,/entry:mainCRTStartup -Wl,/subsystem:console -Wl,/OPT:REF -Wl,/OPT:ICF "
         "-lkernel32");
     ultraFlagSets.push_back(
         "-O3 -march=native -mtune=native -funroll-loops -fstrict-aliasing -fomit-frame-pointer -fno-stack-protector "
         "-fno-builtin -fno-builtin-strlen -fvectorize -fslp-vectorize -DNDEBUG "
-        "-nostdlib -fuse-ld=lld -Wl,/entry:mainCRTStartup -Wl,/subsystem:windows -Wl,/OPT:REF -Wl,/OPT:ICF "
+        "-nostdlib -fuse-ld=lld -Wl,/entry:mainCRTStartup -Wl,/subsystem:console -Wl,/OPT:REF -Wl,/OPT:ICF "
         "-lkernel32");
     ultraFlagSets.push_back(
         "-O3 -fstrict-aliasing -fomit-frame-pointer -fno-stack-protector -fno-builtin -fno-builtin-strlen -DNDEBUG "
-        "-nostdlib -fuse-ld=lld -Wl,/entry:mainCRTStartup -Wl,/subsystem:windows -Wl,/OPT:REF -Wl,/OPT:ICF "
+        "-nostdlib -fuse-ld=lld -Wl,/entry:mainCRTStartup -Wl,/subsystem:console -Wl,/OPT:REF -Wl,/OPT:ICF "
         "-lkernel32");
     flagSets.insert(flagSets.begin(), ultraFlagSets.begin(), ultraFlagSets.end());
   }
@@ -9366,14 +9950,7 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   if (hasWinNetDep) {
     winLinkFlags += msvcLike ? " ws2_32.lib" : " -lws2_32";
   }
-  const bool speedGuiMode = o.maxSpeed && !hasInteractiveInput && !ultraMinimalRuntime;
-  if (cleanOutputMode || speedGuiMode) {
-    if (clangLike) {
-      winGuiFlags = " -Xlinker /SUBSYSTEM:WINDOWS -Xlinker /ENTRY:mainCRTStartup";
-    } else if (gccLike) {
-      winGuiFlags = " -Wl,--subsystem,windows";
-    }
-  }
+  // Keep console-attached behavior. `.format()` only suppresses toolchain chatter.
   if (o.maxSpeed && (clangLike || gccLike)) {
     winOptLinkFlags = " -Wl,/OPT:REF -Wl,/OPT:ICF";
   }
@@ -9406,26 +9983,33 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
     if (tryAsmBackend) {
       const std::string asmFlags = flagsForAsmEmit(flags);
       const std::string asmLinkFlags = flagsForAsmLink(flags);
+      if (superuserMode) {
+        superuserLog("trying ASM emit flags: " + asmFlags);
+      }
       std::ostringstream asmEmit;
       asmEmit << qCmd(o.cc) << " " << asmFlags << " -fno-lto -S -masm=intel " << q(c) << " -o " << q(asmTmp);
       rc = std::system(asmEmit.str().c_str());
       if (rc == 0) {
+        if (superuserMode) superuserLog("ASM emit succeeded; linking ASM backend");
         std::ostringstream asmLink;
         asmLink << qCmd(o.cc) << " " << asmLinkFlags << " " << q(asmTmp) << " -o " << q(bin) << linkSuffix;
         rc = std::system(asmLink.str().c_str());
         if (rc == 0) {
           usedFlags = flags;
           usedBackend = "asm";
+          if (superuserMode) superuserLog("ASM backend selected");
           break;
         }
       }
       for (const std::string &cppCmdName : cppFallbackCommands) {
+        if (superuserMode) superuserLog("ASM path failed; trying C++ fallback compiler: " + cppCmdName);
         std::ostringstream cppCmd;
         cppCmd << qCmd(cppCmdName) << " " << flags << " " << q(c) << " -o " << q(bin) << linkSuffix;
         rc = std::system(cppCmd.str().c_str());
         if (rc == 0) {
           usedFlags = flags;
           usedBackend = "cpp-fallback";
+          if (superuserMode) superuserLog("C++ fallback backend selected: " + cppCmdName);
           break;
         }
       }
@@ -9433,10 +10017,12 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
     }
     std::ostringstream cmd;
     cmd << qCmd(o.cc) << " " << flags << " " << q(c) << " -o " << q(bin) << linkSuffix;
+    if (superuserMode) superuserLog("trying C backend flags: " + flags);
     rc = std::system(cmd.str().c_str());
     if (rc == 0) {
       usedFlags = flags;
       usedBackend = "c";
+      if (superuserMode) superuserLog("C backend selected");
       break;
     }
   }
@@ -9461,8 +10047,13 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
     std::cout << "Backend: " << usedBackend << '\n';
     std::cout << "Native flags: " << usedFlags << '\n';
     std::cout << "Built binary: " << bin << '\n';
+    std::cout.flush();
+  }
+  if (superuserMode) {
+    superuserLog("build completed with backend=" + usedBackend);
   }
   if (o.run) {
+    if (superuserMode) superuserLog("running binary: " + bin.string());
     const int runRc = std::system(q(bin).c_str());
     if (runRc != 0) return runRc;
   }
@@ -9476,6 +10067,9 @@ int main(int argc, char **argv) {
   std::string currentFile;
   try {
     ls::Opt o = ls::parseOpt(argc, argv);
+    for (const std::string &msg : o.infoMessages) std::cout << msg << '\n';
+    if (o.infoOnly) return 0;
+    ls::setSuperuserLogging(false, false);
     ls::Program p;
     for (const auto &input : o.inputs) {
       stage = "parse";
@@ -9485,26 +10079,79 @@ int main(int argc, char **argv) {
       ls::Parser ps(lx.run());
       ls::Program part = ps.run();
       for (auto &fn : part.f) p.f.push_back(std::move(fn));
+      for (auto &stmt : part.top) p.top.push_back(std::move(stmt));
+    }
+    std::vector<std::string> activeCliFlags;
+    if (!o.cliFlags.empty()) {
+      const auto defs = ls::cliFlagDefinitions(p);
+      std::unordered_set<std::string> seen;
+      for (const std::string &rawFlag : o.cliFlags) {
+        const std::string body = ls::cliFlagBodyFromArg(rawFlag);
+        if (!ls::isValidCliFlagBody(body)) {
+          std::cerr << "Warning: bad flag '" << rawFlag << "' ignored\n";
+          continue;
+        }
+        auto it = defs.find(body);
+        if (it != defs.end()) {
+          if (seen.insert(body).second) activeCliFlags.push_back(body);
+          continue;
+        }
+        if (!ls::isKnownInfoFlagBody(body)) {
+          std::cerr << "Warning: undefined flag '" << rawFlag << "'\n";
+        }
+      }
+    }
+    if (!p.top.empty()) {
+      ls::Fn script;
+      script.n = ls::kScriptEntryName;
+      script.ret = ls::Type::Void;
+      script.s = p.top.front()->s;
+      script.b = std::move(p.top);
+      p.top.clear();
+      p.f.push_back(std::move(script));
+    }
+    const bool superuserMode = ls::hasCallNamedProgram(p, "superuser");
+    const bool cleanOutputModeEarly = ls::hasFormatMarkerProgram(p);
+    ls::setSuperuserLogging(superuserMode, cleanOutputModeEarly);
+    if (superuserMode) {
+      std::cerr << "Warning: superuser() enabled. LineScript safety checks are relaxed for developer diagnostics.\n"
+                << std::flush;
+      ls::superuserLog("superuser mode detected from source");
+      ls::superuserLog("inputs=" + std::to_string(o.inputs.size()));
     }
 
     stage = "type-check";
     currentFile.clear();
-    ls::TypeCheck tc(p);
+    ls::TypeCheck tc(p, superuserMode);
     tc.run();
+    if (superuserMode) {
+      for (const auto &w : tc.warnings()) ls::superuserLog("type-check warning: " + w);
+    }
 
     stage = "optimize";
+    if (superuserMode) ls::superuserLog("optimizer passes=" + std::to_string(o.passes));
     ls::optimize(p, o.passes);
     stage = "re-type-check";
-    ls::TypeCheck tc2(p);
+    ls::TypeCheck tc2(p, superuserMode);
     tc2.run();
+    if (superuserMode) {
+      for (const auto &w : tc2.warnings()) ls::superuserLog("re-type-check warning: " + w);
+    }
     if (o.check) {
       std::cout << "Check passed: " << o.inputs.size() << " file(s)\n";
       return 0;
     }
 
     stage = "emit/build";
-    ls::EmitC ec(p, ls::inlineSet(p));
-    const bool cleanOutputMode = ls::hasFormatMarkerProgram(p);
+    ls::EmitC ec(p, ls::inlineSet(p), superuserMode, activeCliFlags);
+    if ((o.build || o.run) && !ec.hasEntry()) {
+      throw std::runtime_error(ec.entryError());
+    }
+    const bool cleanOutputMode = cleanOutputModeEarly;
+    ls::setSuperuserLogging(superuserMode, cleanOutputMode);
+    if (superuserMode) {
+      ls::superuserLog(std::string("debug stream=") + (cleanOutputMode ? "stderr/debug-window (.format mode)" : "terminal"));
+    }
     const bool hasParallelFor = ls::hasParallelForProgram(p);
     const bool hasWinGraphicsDep = ls::hasWinGraphicsDepProgram(p);
     const bool hasWinNetDep = ls::hasCallNamedProgram(p, "http_server_listen") ||
@@ -9521,9 +10168,10 @@ int main(int argc, char **argv) {
     const bool ultraMinimalRuntime = ec.ultraMinimalRuntime();
     const bool hasInteractiveInput = ls::hasCallNamedProgram(p, "input") || ls::hasCallNamedProgram(p, "input_i64") ||
                                      ls::hasCallNamedProgram(p, "input_f64");
+    if (superuserMode) ls::superuserLog("emitting C backend source");
     const std::string cOut = ec.run();
     return ls::finish(o, cOut, cleanOutputMode, hasParallelFor, hasWinGraphicsDep, hasWinNetDep, hasPosixThreadDep,
-                      ultraMinimalRuntime, hasInteractiveInput);
+                      ultraMinimalRuntime, hasInteractiveInput, superuserMode, ec.superuserIrDumpRequested());
   } catch (const ls::CompileError &e) {
     if (!currentFile.empty()) {
       std::cerr << "LineScript error (" << currentFile << "): " << e.what() << '\n';

@@ -49,6 +49,22 @@ add(a: i64, b: i64) -> i64 do
 end
 ```
 
+Top-level script mode is also supported. You can run simple code without wrapping it in `main()`:
+
+```linescript
+print("milk")
+```
+
+You can also define and call functions from top level:
+
+```linescript
+sudo() {
+  print("hi")
+}
+
+sudo()
+```
+
 Compatibility syntax:
 
 ```linescript
@@ -86,6 +102,37 @@ end
 Rules:
 - `throws <ErrorName>[, <ErrorName>...]` is optional.
 - if a function calls another function that declares `throws X`, the caller must also declare `throws X`.
+
+Entry-point resolution when you build/run:
+1. top-level statements (if present) run first as the program entry
+2. otherwise `main()` is used if defined
+3. otherwise, if there is exactly one zero-argument function, it is used as entry
+4. otherwise build fails with an explicit entry-point error
+
+### Script-First Mode (No Boilerplate)
+
+You can write most programs directly at top level. Functions are optional.
+
+```linescript
+declare total: i64 = 0
+
+for i in 0..5 do
+  total += i
+end
+
+if total >= 10 do
+  println(total)
+end
+```
+
+Top-level supports:
+- variable declarations and assignments
+- `if` / `elif` / `else` and `unless`
+- `for` and `while`
+- class declarations plus object usage
+- function definitions and function calls
+- collection, math, input, graphics, and game builtins
+- `formatOutput(...) do ... end`, `.format()`, and `.freeConsole()`
 
 ### C++-Style Classes
 
@@ -411,7 +458,8 @@ end
 Notes:
 - `.format()` takes zero arguments
 - no `end` is required
-- on Windows, when present anywhere in the program, builds use the GUI subsystem (no extra console window)
+- `.format()` does not disable stdout; your program output still prints normally
+- `lsc --run` output is clean: only your program output is shown (compiler status lines are suppressed)
 - when launched from an existing terminal, input/output still use that parent terminal
 
 Inline console detach (statement form, no block):
@@ -428,6 +476,32 @@ Notes:
 - no `end` is required
 - on Windows, they detach the process console (useful for visible game-window runs)
 - on non-Windows targets, they are no-ops
+
+### Superuser Developer Mode
+
+Use `superuser()` when you explicitly want low-level diagnostics and relaxed guard rails for debugging.
+
+```linescript
+superuser()
+su.trace.on()
+println(su.capabilities())
+su.trace.off()
+```
+
+Available privileged helpers:
+- `su.trace.on()` / `su.trace.off()`: runtime statement tracing.
+- `su.capabilities() -> str`: active privileges and limits.
+- `su.memory.inspect() -> str`: current superuser memory counters/limits.
+- `su.limit.set(step_limit: i64, mem_limit: i64)`: runtime step + memory limits.
+- `su.compiler.inspect() -> str`: compiler/runtime inspection summary.
+- `su.ir.dump()`: requests generated IR/C dump for the current build.
+- `su.debug.hook(tag: str)`: debug hook marker for tooling/log streams.
+
+Rules:
+- calling `su.*` without `superuser()` fails with: `Not privileged`.
+- when `superuser()` is present, LineScript prints a terminal warning that safety checks are relaxed.
+- in `.format()` mode, superuser debug logs are sent to debug/error output instead of normal program output.
+- syntax/parse errors and impossible-to-compile code are still errors.
 
 Postfix increment/decrement:
 
@@ -606,7 +680,7 @@ declare y = 2
 declare x = 1; declare y = 2;
 ```
 
-## 11. Entry Point
+## 11. Entry Point (Script-First)
 
 ```linescript
 main() -> i64 do
@@ -616,6 +690,11 @@ end
 ```
 
 Rules:
+- `main()` is optional
+- if top-level statements exist, they run as the entry point
+- otherwise `main()` is used if present
+- otherwise, one zero-argument function can be used as entry automatically
+- if multiple zero-argument functions exist and no top-level/main exists, build fails with an explicit entry error
 - `main` must have zero parameters
 - `main() -> i64` return value is process exit code
 - `main() -> void` exits with code `0`
@@ -699,3 +778,21 @@ Functional style:
 Generic style:
 - use ad-hoc generic numeric builtins: `max`, `min`, `abs`, `clamp`
 - use type inference to keep call sites concise
+
+## 17. Extra Notes
+
+LineScript includes a few compatibility-style CLI flags for quick checks.
+
+Custom CLI flags:
+
+```linescript
+flag hello-world() do
+  println("flag triggered")
+end
+```
+
+Usage:
+- run with `--hello-world` to execute that flag function before normal script entry.
+- flags do not replace script execution; your normal script still runs.
+- undefined flags produce a warning and are ignored.
+- malformed flags produce a warning and are ignored.

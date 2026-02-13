@@ -48,6 +48,46 @@ main() -> i64 do
 end
 ```
 
+You can also run direct top-level statements:
+
+```linescript
+print("hello")
+```
+
+You can define and call functions without `main()` too:
+
+```linescript
+sudo() {
+  print("hi")
+}
+
+sudo()
+```
+
+Entry selection in build/run mode:
+1. if top-level statements exist, LineScript runs them as the entry script
+2. else if `main()` exists, `main()` is the entry
+3. else if there is exactly one zero-argument function (any name), that function is used
+4. else LineScript reports an explicit entry-point error
+
+## 2.1 No-Boilerplate Script Mode
+
+You do not need `main()` for most work. This is valid and runnable:
+
+```linescript
+declare total = 0
+for i in 0..5 do
+  total += i
+end
+println(total)
+```
+
+Top-level is fine for normal coding:
+- declarations, loops, conditionals
+- class definitions and object usage
+- function definitions and calls
+- built-ins (`array_*`, `dict_*`, `math`, `input`, `gfx_*`, `game_*`, etc.)
+
 ## 3. Function Start/End
 
 Use `do` to start and `end` to close:
@@ -120,7 +160,8 @@ end
 - `input_i64` / `input_f64`: read one line and parse numeric values.
 - `formatOutput` / `FormatOutput`: convert values to `str`.
 - `.stateSpeed()`: prints elapsed microseconds since the current function started.
-- `.format()`: inline run-format marker (no `end`); on Windows it enables GUI-subsystem linking.
+- `.format()`: inline run-format marker (no `end`); it suppresses compiler/build status chatter.
+- with `.format()`, `lsc --run` prints only program output (no compiler status jargon).
 - `.freeConsole()` / `FreeConsole()`: inline console detach marker (no `end`).
 - `array_*`, `dict_*`, `map_*`: built-in collection helpers using `i64` handles.
 - `object_*`: OOP-style aliases over dictionary handles (`i64`).
@@ -236,6 +277,21 @@ parallel for i in 0..1000000 do
 end
 ```
 
+LineScript also includes a few compatibility-style CLI flags for quick checks.
+
+Custom CLI flags:
+
+```linescript
+flag hello() do
+  println("hello flag")
+end
+```
+
+- invoke with `--hello`.
+- custom flags run before normal script entry and do not suppress normal script execution.
+- undefined flags produce warnings and are ignored.
+- malformed flags produce warnings and are ignored.
+
 Async task primitives:
 
 ```linescript
@@ -296,6 +352,26 @@ main() -> i64 do
   return 0
 end
 ```
+
+Superuser mode (advanced diagnostics):
+
+```linescript
+superuser()
+su.trace.on()
+println(su.capabilities())
+su.trace.off()
+```
+
+Notes:
+- without `superuser()`, any `su.*` call fails with `Not privileged`.
+- with `superuser()`, LineScript prints a terminal warning because checks are intentionally relaxed.
+- `.format()` keeps normal program output clean and routes superuser diagnostics to debug/error output.
+- useful superuser calls:
+- `su.memory.inspect()`
+- `su.limit.set(step_limit, mem_limit)`
+- `su.compiler.inspect()`
+- `su.ir.dump()`
+- `su.debug.hook("tag")`
 
 Inline console detach marker (no closing statement):
 

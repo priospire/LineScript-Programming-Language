@@ -101,6 +101,15 @@ clock_us() -> i64
 .format() -> void
 .freeConsole() -> void
 FreeConsole() -> void
+superuser() -> void
+su.trace.on() -> void
+su.trace.off() -> void
+su.capabilities() -> str
+su.memory.inspect() -> str
+su.limit.set(step_limit: i64, mem_limit: i64) -> void
+su.compiler.inspect() -> str
+su.ir.dump() -> void
+su.debug.hook(tag: str) -> void
 ```
 
 Notes:
@@ -109,8 +118,12 @@ Notes:
 - `.freeConsole()` / `FreeConsole()` take no args and have no closing statement.
 - on Windows they detach the console so only the game window remains.
 - on non-Windows targets they are safe no-ops.
-- on Windows, if `.format()` exists anywhere in a program, builds use the GUI subsystem (no extra console window is created).
+- `.format()` does not hide program output; it only suppresses compiler/build status lines in run mode.
 - when launched from an existing terminal, stdio remains tied to that parent terminal.
+- `superuser()` enables developer superuser mode and prints a terminal warning.
+- `su.*` calls require `superuser()`; otherwise they fail with `Not privileged`.
+- `su.trace.on/off` toggles runtime trace logging.
+- `su.limit.set` controls runtime step/memory limits for debugging sessions.
 
 ## 3. String and Byte Helpers
 
