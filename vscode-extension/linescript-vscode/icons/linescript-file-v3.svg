@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="lsTop" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffd166"/>
+      <stop offset="100%" stop-color="#ffb703"/>
+    </linearGradient>
+    <linearGradient id="lsMid" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffcc5c"/>
+      <stop offset="100%" stop-color="#ff9f1c"/>
+    </linearGradient>
+    <linearGradient id="lsBot" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffc857"/>
+      <stop offset="100%" stop-color="#ff8c00"/>
+    </linearGradient>
+  </defs>
+  <!-- Strong right-bias placement + balanced bar lengths to avoid the long right-tail artifact. -->
+  <g transform="translate(80 64)">
+    <g transform="skewX(-22)">
+      <rect x="-20" y="-36" width="56" height="12" rx="6" fill="url(#lsTop)"/>
+      <rect x="-20" y="-8" width="56" height="12" rx="6" fill="url(#lsMid)"/>
+      <rect x="-20" y="20" width="56" height="12" rx="6" fill="url(#lsBot)"/>
+    </g>
+  </g>
+</svg>

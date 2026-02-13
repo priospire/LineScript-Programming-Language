@@ -1,0 +1,134 @@
+{
+  "name": "linescript-vscode",
+  "displayName": "LineScript",
+  "description": "Language support for LineScript (.lsc, .ls): syntax highlight, snippets, diagnostics, suggestions, and LSP features.",
+  "version": "1.4.6",
+  "publisher": "linescript",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:linescript",
+    "onCommand:linescript.restartLanguageServer"
+  ],
+  "main": "./client/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "linescript",
+        "aliases": [
+          "LineScript",
+          "linescript"
+        ],
+        "extensions": [
+          ".lsc",
+          ".ls"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "linescript",
+        "scopeName": "source.linescript",
+        "path": "./syntaxes/linescript.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "linescript",
+        "path": "./snippets/linescript.code-snippets"
+      }
+    ],
+    "commands": [
+      {
+        "command": "linescript.restartLanguageServer",
+        "title": "LineScript: Restart Language Server"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "linescript-seti-icons",
+        "label": "LineScript + Seti Icons",
+        "path": "./icons/linescript-seti-icon-theme.json"
+      }
+    ],
+    "configuration": {
+      "title": "LineScript",
+      "properties": {
+        "linescript.lscPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to LineScript compiler executable. Empty means auto: lsc.exe (Windows) or lsc (non-Windows)."
+        },
+        "linescript.backendCompiler": {
+          "type": "string",
+          "default": "",
+          "description": "Optional backend compiler for checks, passed as '--cc <value>'. Example: clang or gcc."
+        },
+        "linescript.maxSpeedDiagnostics": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, include '--max-speed' in diagnostics checks."
+        },
+        "linescript.checkOnType": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run compiler diagnostics while typing (debounced)."
+        },
+        "linescript.checkOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run compiler diagnostics when the file is saved."
+        },
+        "linescript.checkTimeoutMs": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Compiler diagnostics timeout in milliseconds."
+        },
+        "linescript.extraCheckArgs": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional args appended to 'lsc <file> --check'. Use carefully."
+        },
+        "linescript.hintsEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable user-friendly hints and QoL suggestions in diagnostics."
+        },
+        "linescript.styleHintsEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable optional style hints (semicolon cleanup, c-style reminders, and shorthand suggestions)."
+        },
+        "linescript.maxHintsPerFile": {
+          "type": "number",
+          "default": 120,
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Maximum number of hint/info diagnostics shown per file."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11",
+    "vscode-uri": "^3.0.8"
+  },
+  "scripts": {
+    "test": "node server/formatter.test.js && node server/hints.test.js && node server/false_positives.test.js",
+    "package:vsix": "npx @vscode/vsce package --out linescript-vscode.vsix",
+    "install:local": "npm run package:vsix && code --install-extension linescript-vscode.vsix --force"
+  }
+}

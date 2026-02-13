@@ -2,6 +2,8 @@
 
 This file documents the current LineScript grammar and behavior.
 
+For the exhaustive built-in API list and input polling details, see `docs/API_REFERENCE.md`.
+
 ## 1. File Extensions
 
 - `.lsc` (recommended)
@@ -704,15 +706,15 @@ Rules:
 Compile modules in one command:
 
 ```powershell
-.\lsc.exe src\math.lsc src\main.lsc --run --max-speed --cc clang
+.\lsc.exe src\math.lsc src\main.lsc --run -O4 --cc clang
 ```
 
 All top-level functions are merged into one program.
 
 Speed recommendation:
-- use `--max-speed` for release/performance runs.
+- use `-O4` for release/performance runs (`--max-speed` is an alias).
 - default backend mode is `--backend auto` (x86 asm first, then C++/C fallback).
-- on Windows, eligible `--max-speed` programs can use an ultra-minimal backend path for lower runtime launch overhead.
+- on Windows, eligible `-O4` programs can use an ultra-minimal backend path for lower runtime launch overhead.
 
 ## 13. Type Rules
 

@@ -1,5 +1,33 @@
 # LineScript Changelog
 
+## 2026-02-14 (LineScript v1.4.6)
+
+### Added
+- interactive LineScript shell (REPL) inside `lsc`:
+- launch with no args (`lsc.exe`) or explicit `--repl` / `--shell`.
+- shell meta-commands: `:help`, `:reset`, `:whoami`, `:exit` / `:quit`.
+- multiline block input support with continuation prompt (`...`) for `do/end` and `{}` blocks.
+- session-state replay for persisted commands.
+- user-style prompt (`<user>@LineScript>`) that switches to `superuser@LineScript>` after successful `superuser()` execution.
+
+### Changed
+- bumped runtime/compiler version output to `1.4.6` (`--LineScript` now reports `LineScript version 1.4.6`).
+- updated CLI usage text with shell-mode help (`--repl`, `--shell`, and no-arg shell behavior).
+- `linescript.ps1` and `linescript.sh` now default to REPL when run without source file args.
+- updated VSCode grammar precedence so `fn` / `inline` keep modifier highlighting before `main()`.
+- updated syntax coloring so:
+- `main` remains red and non-bold.
+- `superuser()` has its own cyan scope.
+- updated LineScript VSCode extension package version to `1.4.6`.
+- updated API reference header to `v1.4.6`.
+
+### Tests
+- updated CLI version assertions in `tests/run_tests.ps1` and `tests/run_tests.sh` for `--LineScript`.
+- manual REPL smoke tests:
+- no-arg `lsc.exe` starts shell and exits cleanly with `:exit`.
+- declare/assign/print flow works interactively.
+- `superuser()` changes prompt identity to `superuser`.
+
 ## 2026-02-13 (LineScript v1.4.5)
 
 ### Added
@@ -14,6 +42,20 @@
 - `su.debug.hook(tag)`
 - terminal warning when `superuser()` is active.
 - compatibility CLI aliases for quick diagnostics.
+- game input expansion:
+- `game_scroll_x()` / `game_scroll_y()` for wheel deltas.
+- `game_mouse_down(game, button)` / `game_mouse_down_name(game, name)` for mouse buttons.
+- pygame-style aliases:
+- `pg_scroll_x()` / `pg_scroll_y()`
+- `pg_mouse_down(game, button)` / `pg_mouse_down_name(game, name)`
+- complete API catalog: `docs/API_REFERENCE.md`.
+- VSCode extension scaffold at `vscode-extension/linescript-vscode`:
+- language registration (`.lsc`, `.ls`)
+- TextMate syntax highlighting
+- snippets + completion + hover + definition + symbols
+- LSP diagnostics from `lsc --check`
+- suggestion diagnostics with quick fixes (including “Are you sure this is correct?” style hints)
+- optional file icon theme support for `.lsc/.ls`
 
 ### Changed
 - top-level parser now supports dotted `su.*` calls without requiring class receivers.
@@ -27,6 +69,17 @@
 - built-in alias flags (`--super-speed`, `--what`, `--hlep`, `--max-sped`, `--LineScript`) no longer stop script execution.
 - added `flag name() do ... end` custom CLI flag functions (`flag hello-world()` maps to `--hello-world`).
 - undefined or malformed `--flags` now emit warnings and are ignored without stopping program execution.
+- docs cross-linked to the complete API reference from `README.md`, `docs/STDLIB.md`, `docs/SYNTAX.md`, and `docs/LANGUAGE_GUIDE.md`.
+- `docs/IDE_SETUP.md` now includes VSCode extension install/config steps.
+- packaging scripts now include `vscode-extension/linescript-vscode` in distribution.
+- VSCode language server now supports `DocumentFormatting` for `.lsc/.ls` files.
+- workspace defaults now set LineScript file association, default formatter, format-on-save, and icon theme.
+- VSCode flow now uses one-time VSIX install scripts for daily use (Extension Development Host is for extension development only).
+- VSCode diagnostics now include expanded user-friendly QoL hints:
+- `else if` -> `elif`, `...` -> `..`, missing `do`, Python `:` block style, condition simplification, semicolon and compound-assignment hints.
+- added configurable hint controls: `linescript.hintsEnabled`, `linescript.maxHintsPerFile`.
+- added semantic lint warnings/errors for undeclared variable usage, undeclared assignment, const reassignment, duplicate declarations, invalid `break`/`continue` context, and unreachable statements.
+- added `LineScript + Seti Icons` theme so `.lsc/.ls` can use LineScript logos without turning other file types into generic icons.
 
 ### Fixed
 - parser ambiguity where `formatOutput(\"...\") do ... end` could be misread as a function declaration.
@@ -37,7 +90,12 @@
 - added runtime test: `tests/cases/runtime/superuser_privileged.lsc`.
 - added compile-fail test: `tests/cases/compile_fail/superuser_not_privileged.lsc`.
 - added/updated top-level script tests (`top_level_function_call`, `top_level_most_features`, format CLI checks).
-- deterministic suite: `103 / 103` passed.
+- added runtime test: `tests/cases/runtime/game_scroll_mouse_inputs.lsc`.
+- added compile-fail tests:
+- `tests/cases/compile_fail/game_scroll_bad_types.lsc`
+- `tests/cases/compile_fail/game_mouse_down_bad_types.lsc`
+- deterministic suite: `212 / 212` passed.
+- extension formatter unit tests: `formatter.test.js` passed.
 
 ### Distribution
 - rebuilt `dist/LineScript-win64-20260213` and `dist/LineScript-win64-20260213.zip`.

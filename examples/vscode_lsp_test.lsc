@@ -1,0 +1,43 @@
+// LineScript VSCode extension test file
+// This file is intentionally mixed: valid syntax + suspicious code + type errors.
+// Use it to verify syntax highlighting, warning highlights, error highlights, and quick fixes.
+
+declare title: str = "LineScript VSCode Test"
+println(title)
+
+// Suspicious assignment in condition (should suggest '==')
+declare x: i64 = 10
+if x = 10 do
+  // Typo on purpose: extension should suggest println(...)
+  printIn("this should be println")
+end
+
+// Input result intentionally ignored (hint should appear)
+input("Name: ")
+
+// Class/OOP syntax highlighting sample
+class Player do
+  declare hp: i64 = 100
+
+  constructor() -> void do
+    this.hp = 100
+  end
+
+  damage(n: i64) -> i64 do
+    this.hp -= n
+    return this.hp
+  end
+end
+
+declare p = Player()
+println(p.damage(7))
+
+// Runtime API highlight sample
+declare g = game_new(320, 180, "Demo", false)
+println(to_i64(round(game_scroll_y(g))))
+
+// Type errors on purpose (should be highlighted as compiler diagnostics)
+declare val: i64 = array_get(array_new(), 0)   // array_get returns str, not i64
+if game_mouse_down_name(g, 123) do             // arg2 must be str
+  println("clicked")
+end

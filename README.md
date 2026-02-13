@@ -12,28 +12,41 @@ LineScript supports two native backends:
 
 Recent change history: `docs/CHANGELOG.md`.
 
+Documentation map:
+- syntax: `docs/SYNTAX.md`
+- standard library: `docs/STDLIB.md`
+- language guide: `docs/LANGUAGE_GUIDE.md`
+- complete API reference: `docs/API_REFERENCE.md`
+- IDE setup (including VSCode extension): `docs/IDE_SETUP.md`
+
+VSCode extension source:
+- `vscode-extension/linescript-vscode`
+- includes LSP diagnostics, suggestions, quick fixes, snippets, and `.lsc/.ls` icon theme support.
+- one-time install scripts: `scripts/install_vscode_extension.ps1` and `scripts/install_vscode_extension.sh`
+
 ## Quick Start
 
 Build and run a program in one command:
 
 ```powershell
-.\linescript.cmd examples\benchmark.lsc --max-speed --cc clang
+.\linescript.cmd examples\benchmark.lsc -O4 --cc clang
 ```
 
 Linux/macOS:
 
 ```bash
-./linescript.sh examples/benchmark.lsc --max-speed --cc clang
+./linescript.sh examples/benchmark.lsc -O4 --cc clang
 ```
 
 Release rule:
-- always use `--max-speed` for real performance runs and distributable binaries.
+- always use `-O4` for real performance runs and distributable binaries.
+- `--max-speed` remains supported as a compatibility alias.
 - plain builds are primarily for debugging and compile validation.
 
 Compile multiple modules together:
 
 ```powershell
-.\linescript.cmd examples\module_math.lsc examples\module_main.lsc --max-speed --cc clang
+.\linescript.cmd examples\module_math.lsc examples\module_main.lsc -O4 --cc clang
 ```
 
 Linux notes:
@@ -42,6 +55,36 @@ Linux notes:
 - built-in HTTP server/client works on Linux.
 - game/window key polling is currently native on Windows; on Linux game APIs run in safe headless mode.
 - use `linescript.sh` and `*.sh` test/package scripts (no PowerShell dependency required).
+
+## Interactive Shell (REPL)
+
+Python-style interactive shell is built into `lsc`:
+
+```powershell
+.\lsc.exe
+```
+
+or:
+
+```powershell
+.\lsc.exe --repl
+```
+
+You can also run:
+
+```powershell
+.\linescript.cmd
+```
+
+REPL commands:
+- `:help` show help
+- `:reset` clear session state
+- `:whoami` show current shell identity
+- `:exit` / `:quit` leave shell
+
+Prompt behavior:
+- default prompt is `<username>@LineScript>`.
+- after successful `superuser()`, prompt switches to `superuser@LineScript>`.
 
 ## Core Syntax
 
@@ -318,6 +361,12 @@ end
 game_free(game)
 ```
 
+Input polling in game mode:
+- keyboard: `key_down(code)` / `key_down_name("SPACE")`
+- mouse buttons: `game_mouse_down(game, 1)` or `game_mouse_down_name(game, "LEFT")`
+- wheel: `game_scroll_x(game)` / `game_scroll_y(game)` (per-frame deltas)
+- pygame aliases: `pg_mouse_down*`, `pg_scroll_x/y`
+
 Inline format marker (no closing statement):
 
 ```linescript
@@ -418,7 +467,7 @@ clang++ -std=c++20 -O3 -Wall -Wextra -pedantic src/lsc.cpp -o lsc.exe
 Manual compile + run:
 
 ```powershell
-.\lsc.exe examples\high_level.lsc --run --cc clang --max-speed -o examples\high_level.exe
+.\lsc.exe examples\high_level.lsc --run --cc clang -O4 -o examples\high_level.exe
 ```
 
 ## CLI
@@ -434,7 +483,8 @@ Options:
 - `--cc <name>` select native toolchain compiler command used by backend pipelines
 - `--backend <x>` select backend mode: `auto` (asm-first), `c`, `asm`
 - `--passes <n>` greedy optimizer passes
-- `--max-speed` strongest speed profile (recommended default for release/perf)
+- `-O4` strongest speed profile (recommended default for release/perf)
+- `--max-speed` compatibility alias for `-O4`
 - `--keep-c` keep generated C output
 - `-o <path>` output path
 - custom `--flag-name` arguments are supported via `flag flag-name() do ... end` in source.
@@ -449,8 +499,8 @@ Options:
 - no mandatory VM and no GC runtime
 - greedy multi-pass optimizer (constant folding, DCE, branch/loop simplification, inlining)
 - constant small-trip loop unrolling in optimizer
-- aggressive native flags in `--max-speed`
-- on Windows, eligible `--max-speed` programs use an ultra-minimal no-CRT backend path for lower launch overhead
+- aggressive native flags in `-O4` mode
+- on Windows, eligible `-O4` programs use an ultra-minimal no-CRT backend path for lower launch overhead
 - loop vectorization/unroll hints in emitted C
 - `parallel for` maps to OpenMP parallel+SIMD when available (serial fallback otherwise)
 - low-overhead C emission
@@ -521,7 +571,7 @@ This produces a distributable ZIP with:
 For a new project, extract the ZIP and copy its contents into your project folder, then run:
 
 ```powershell
-.\linescript.cmd .\main.lsc --max-speed --cc clang
+.\linescript.cmd .\main.lsc -O4 --cc clang
 ```
 
 CMake packaging is also available with `CPack`:

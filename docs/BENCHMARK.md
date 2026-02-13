@@ -5,7 +5,7 @@ Collected on `2026-02-06` in this workspace.
 Environment:
 - frontend compiler build: `clang++ -std=c++20 -O3 -Wall -Wextra -pedantic src/lsc.cpp -o lsc.exe`
 - backend C compiler: `clang`
-- LineScript mode: `--max-speed`
+- LineScript mode: `-O4` (`--max-speed` alias still supported)
 - selected native flags: speed-first `-O3` profile with aggressive math, native tuning, loop unrolling, and aliasing/frame-pointer optimizations (OpenMP attempted first, with fallback)
 
 ## Bench Programs
@@ -15,7 +15,7 @@ Environment:
 
 ## Build Times
 
-Measured with repeated `.\lsc.exe <file> --build --cc clang --max-speed`.
+Measured with repeated `.\lsc.exe <file> --build --cc clang -O4`.
 
 `fib.lsc` over 5 runs:
 - average: `188.8115 ms`
@@ -60,7 +60,7 @@ Raw `benchmark.exe` run samples (ms):
 ```powershell
 clang++ -std=c++20 -O3 -Wall -Wextra -pedantic src/lsc.cpp -o lsc.exe
 
-.\lsc.exe examples\benchmark.lsc --build --cc clang --max-speed -o examples\benchmark.exe
+.\lsc.exe examples\benchmark.lsc --build --cc clang -O4 -o examples\benchmark.exe
 Measure-Command { .\examples\benchmark.exe > $null }
 ```
 

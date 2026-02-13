@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cctype>
 #include <cstdint>
@@ -2047,6 +2048,10 @@ private:
     addSig("game_mouse_y", {Type::I64}, Type::F64, s);
     addSig("game_mouse_norm_x", {Type::I64}, Type::F64, s);
     addSig("game_mouse_norm_y", {Type::I64}, Type::F64, s);
+    addSig("game_scroll_x", {Type::I64}, Type::F64, s);
+    addSig("game_scroll_y", {Type::I64}, Type::F64, s);
+    addSig("game_mouse_down", {Type::I64, Type::I64}, Type::Bool, s);
+    addSig("game_mouse_down_name", {Type::I64, Type::Str}, Type::Bool, s);
     addSig("game_clear", {Type::I64, Type::I64, Type::I64, Type::I64}, Type::Void, s);
     addSig("game_set", {Type::I64, Type::I64, Type::I64, Type::I64, Type::I64, Type::I64}, Type::Void, s);
     addSig("game_get", {Type::I64, Type::I64, Type::I64}, Type::I64, s);
@@ -2080,10 +2085,14 @@ private:
     addSig("pg_mouse_y", {Type::I64}, Type::F64, s);
     addSig("pg_mouse_norm_x", {Type::I64}, Type::F64, s);
     addSig("pg_mouse_norm_y", {Type::I64}, Type::F64, s);
+    addSig("pg_scroll_x", {Type::I64}, Type::F64, s);
+    addSig("pg_scroll_y", {Type::I64}, Type::F64, s);
     addSig("pg_delta", {Type::I64}, Type::F64, s);
     addSig("pg_frame", {Type::I64}, Type::I64, s);
     addSig("pg_key_down", {Type::I64}, Type::Bool, s);
     addSig("pg_key_down_name", {Type::Str}, Type::Bool, s);
+    addSig("pg_mouse_down", {Type::I64, Type::I64}, Type::Bool, s);
+    addSig("pg_mouse_down_name", {Type::I64, Type::Str}, Type::Bool, s);
     addSig("pg_surface_new", {Type::I64, Type::I64}, Type::I64, s);
     addSig("pg_surface_free", {Type::I64}, Type::Void, s);
     addSig("pg_surface_clear", {Type::I64, Type::I64, Type::I64, Type::I64}, Type::Void, s);
@@ -7169,6 +7178,9 @@ private:
     o_ << "  double mouse_y;\n";
     o_ << "  double mouse_norm_x;\n";
     o_ << "  double mouse_norm_y;\n";
+    o_ << "  double scroll_x;\n";
+    o_ << "  double scroll_y;\n";
+    o_ << "  uint32_t mouse_buttons;\n";
     o_ << "#if defined(_WIN32)\n";
     o_ << "  HWND hwnd;\n";
     o_ << "  HDC hdc;\n";
@@ -7239,6 +7251,54 @@ private:
     o_ << "    DestroyWindow(hwnd);\n";
     o_ << "    return 0;\n";
     o_ << "  }\n";
+    o_ << "  if (msg == WM_MOUSEWHEEL) {\n";
+    o_ << "    if (g) g->scroll_y += (double)((short)HIWORD(wp)) / (double)WHEEL_DELTA;\n";
+    o_ << "    return 0;\n";
+    o_ << "  }\n";
+    o_ << "  if (msg == WM_MOUSEHWHEEL) {\n";
+    o_ << "    if (g) g->scroll_x += (double)((short)HIWORD(wp)) / (double)WHEEL_DELTA;\n";
+    o_ << "    return 0;\n";
+    o_ << "  }\n";
+    o_ << "  if (msg == WM_LBUTTONDOWN) {\n";
+    o_ << "    if (g) g->mouse_buttons |= (uint32_t)1u;\n";
+    o_ << "    return 0;\n";
+    o_ << "  }\n";
+    o_ << "  if (msg == WM_LBUTTONUP) {\n";
+    o_ << "    if (g) g->mouse_buttons &= ~(uint32_t)1u;\n";
+    o_ << "    return 0;\n";
+    o_ << "  }\n";
+    o_ << "  if (msg == WM_RBUTTONDOWN) {\n";
+    o_ << "    if (g) g->mouse_buttons |= (uint32_t)(1u << 1);\n";
+    o_ << "    return 0;\n";
+    o_ << "  }\n";
+    o_ << "  if (msg == WM_RBUTTONUP) {\n";
+    o_ << "    if (g) g->mouse_buttons &= ~(uint32_t)(1u << 1);\n";
+    o_ << "    return 0;\n";
+    o_ << "  }\n";
+    o_ << "  if (msg == WM_MBUTTONDOWN) {\n";
+    o_ << "    if (g) g->mouse_buttons |= (uint32_t)(1u << 2);\n";
+    o_ << "    return 0;\n";
+    o_ << "  }\n";
+    o_ << "  if (msg == WM_MBUTTONUP) {\n";
+    o_ << "    if (g) g->mouse_buttons &= ~(uint32_t)(1u << 2);\n";
+    o_ << "    return 0;\n";
+    o_ << "  }\n";
+    o_ << "  if (msg == WM_XBUTTONDOWN) {\n";
+    o_ << "    if (g) {\n";
+    o_ << "      const uint16_t xb = HIWORD(wp);\n";
+    o_ << "      if (xb == XBUTTON1) g->mouse_buttons |= (uint32_t)(1u << 3);\n";
+    o_ << "      else if (xb == XBUTTON2) g->mouse_buttons |= (uint32_t)(1u << 4);\n";
+    o_ << "    }\n";
+    o_ << "    return 1;\n";
+    o_ << "  }\n";
+    o_ << "  if (msg == WM_XBUTTONUP) {\n";
+    o_ << "    if (g) {\n";
+    o_ << "      const uint16_t xb = HIWORD(wp);\n";
+    o_ << "      if (xb == XBUTTON1) g->mouse_buttons &= ~(uint32_t)(1u << 3);\n";
+    o_ << "      else if (xb == XBUTTON2) g->mouse_buttons &= ~(uint32_t)(1u << 4);\n";
+    o_ << "    }\n";
+    o_ << "    return 1;\n";
+    o_ << "  }\n";
     o_ << "  if (msg == WM_DESTROY) {\n";
     o_ << "    if (g) g->should_close = 1;\n";
     o_ << "    return 0;\n";
@@ -7286,6 +7346,9 @@ private:
     o_ << "  g->mouse_y = 0.0;\n";
     o_ << "  g->mouse_norm_x = 0.0;\n";
     o_ << "  g->mouse_norm_y = 0.0;\n";
+    o_ << "  g->scroll_x = 0.0;\n";
+    o_ << "  g->scroll_y = 0.0;\n";
+    o_ << "  g->mouse_buttons = 0u;\n";
     o_ << "#if defined(_WIN32)\n";
     o_ << "  QueryPerformanceFrequency(&g->freq);\n";
     o_ << "  QueryPerformanceCounter(&g->last);\n";
@@ -7328,6 +7391,8 @@ private:
     o_ << "static inline void game_free(int64_t id) {\n";
     o_ << "  ls_game *g = ls_get_game(id);\n";
     o_ << "  if (!g) return;\n";
+    o_ << "  g->scroll_x = 0.0;\n";
+    o_ << "  g->scroll_y = 0.0;\n";
     o_ << "#if defined(_WIN32)\n";
     o_ << "  if (g->hdc && g->hwnd) {\n";
     o_ << "    ReleaseDC(g->hwnd, g->hdc);\n";
@@ -7410,6 +7475,9 @@ private:
     o_ << "  g->mouse_y = 0.0;\n";
     o_ << "  g->mouse_norm_x = 0.0;\n";
     o_ << "  g->mouse_norm_y = 0.0;\n";
+    o_ << "  g->scroll_x = 0.0;\n";
+    o_ << "  g->scroll_y = 0.0;\n";
+    o_ << "  g->mouse_buttons = 0u;\n";
     o_ << "#endif\n";
     o_ << "}\n";
     o_ << "static inline void game_begin(int64_t id) {\n";
@@ -7494,6 +7562,35 @@ private:
     o_ << "static inline double game_mouse_norm_y(int64_t id) {\n";
     o_ << "  ls_game *g = ls_get_game(id);\n";
     o_ << "  return g ? g->mouse_norm_y : 0.0;\n";
+    o_ << "}\n";
+    o_ << "static inline double game_scroll_x(int64_t id) {\n";
+    o_ << "  ls_game *g = ls_get_game(id);\n";
+    o_ << "  return g ? g->scroll_x : 0.0;\n";
+    o_ << "}\n";
+    o_ << "static inline double game_scroll_y(int64_t id) {\n";
+    o_ << "  ls_game *g = ls_get_game(id);\n";
+    o_ << "  return g ? g->scroll_y : 0.0;\n";
+    o_ << "}\n";
+    o_ << "static inline ls_bool game_mouse_down(int64_t id, int64_t button) {\n";
+    o_ << "  ls_game *g = ls_get_game(id);\n";
+    o_ << "  if (!g) return 0;\n";
+    o_ << "  if (button < 1 || button > 5) return 0;\n";
+    o_ << "  const uint32_t bit = (uint32_t)1u << (uint32_t)(button - 1);\n";
+    o_ << "  return (g->mouse_buttons & bit) ? 1 : 0;\n";
+    o_ << "}\n";
+    o_ << "static inline int ls_mouse_button_from_name(const char *name) {\n";
+    o_ << "  if (!name) return -1;\n";
+    o_ << "  if (strcmp(name, \"LEFT\") == 0) return 1;\n";
+    o_ << "  if (strcmp(name, \"RIGHT\") == 0) return 2;\n";
+    o_ << "  if (strcmp(name, \"MIDDLE\") == 0) return 3;\n";
+    o_ << "  if (strcmp(name, \"X1\") == 0) return 4;\n";
+    o_ << "  if (strcmp(name, \"X2\") == 0) return 5;\n";
+    o_ << "  return -1;\n";
+    o_ << "}\n";
+    o_ << "static inline ls_bool game_mouse_down_name(int64_t id, const char *name) {\n";
+    o_ << "  const int b = ls_mouse_button_from_name(name ? name : \"\");\n";
+    o_ << "  if (b < 0) return 0;\n";
+    o_ << "  return game_mouse_down(id, (int64_t)b);\n";
     o_ << "}\n";
     o_ << "static inline void game_clear(int64_t id, int64_t r, int64_t gg, int64_t b) {\n";
     o_ << "  ls_game *g = ls_get_game(id);\n";
@@ -7675,10 +7772,14 @@ private:
     o_ << "static inline double pg_mouse_y(int64_t game) { return game_mouse_y(game); }\n";
     o_ << "static inline double pg_mouse_norm_x(int64_t game) { return game_mouse_norm_x(game); }\n";
     o_ << "static inline double pg_mouse_norm_y(int64_t game) { return game_mouse_norm_y(game); }\n";
+    o_ << "static inline double pg_scroll_x(int64_t game) { return game_scroll_x(game); }\n";
+    o_ << "static inline double pg_scroll_y(int64_t game) { return game_scroll_y(game); }\n";
     o_ << "static inline double pg_delta(int64_t game) { return game_delta(game); }\n";
     o_ << "static inline int64_t pg_frame(int64_t game) { return game_frame(game); }\n";
     o_ << "static inline ls_bool pg_key_down(int64_t code) { return key_down(code); }\n";
     o_ << "static inline ls_bool pg_key_down_name(const char *name) { return key_down_name(name); }\n";
+    o_ << "static inline ls_bool pg_mouse_down(int64_t game, int64_t button) { return game_mouse_down(game, button); }\n";
+    o_ << "static inline ls_bool pg_mouse_down_name(int64_t game, const char *name) { return game_mouse_down_name(game, name); }\n";
     o_ << "static inline int64_t pg_surface_new(int64_t w, int64_t h) { return gfx_new(w, h); }\n";
     o_ << "static inline void pg_surface_free(int64_t s) { gfx_free(s); }\n";
     o_ << "static inline void pg_surface_clear(int64_t s, int64_t r, int64_t g, int64_t b) { gfx_clear(s, r, g, b); }\n";
@@ -9529,6 +9630,7 @@ struct Opt {
   bool build = false;
   bool run = false;
   bool check = false;
+  bool repl = false;
   bool keepC = false;
   bool maxSpeed = false;
   int passes = 12;
@@ -9543,7 +9645,7 @@ struct Opt {
 static constexpr int kLineScriptVerMajor = 1;
 static constexpr int kLineScriptVerMinor = 4;
 static constexpr int kLineScriptVerPatchBase = 4;
-static constexpr int kLineScriptVerHalfSteps = 2;  // 2 => internal 1.4.5, displayed 1.4.5
+static constexpr int kLineScriptVerHalfSteps = 4;  // 4 => internal 1.4.6, displayed 1.4.6
 
 static std::string lineScriptVersionDisplay() {
   const int patch = kLineScriptVerPatchBase + (kLineScriptVerHalfSteps / 2);
@@ -9576,15 +9678,20 @@ static std::string cliFlagBodyFromArg(const std::string &arg) {
 
 static void usage() {
   std::cerr << "LineScript compiler\n";
+  std::cerr << "No-arg mode starts interactive shell (REPL).\n";
   std::cerr << "Usage: lsc <file1.lsc> [file2.lsc ...] [options]\n";
+  std::cerr << "   or: lsc --repl\n";
   std::cerr << "  -o <path>       output path\n";
   std::cerr << "  --check         parse/type-check/optimize only\n";
   std::cerr << "  --build         compile to native binary via C compiler\n";
   std::cerr << "  --run           build and run native binary\n";
+  std::cerr << "  --repl          interactive LineScript shell\n";
+  std::cerr << "  --shell         alias for --repl\n";
   std::cerr << "  --cc <name>     C compiler command (default: clang)\n";
   std::cerr << "  --backend <x>   backend: auto|c|asm (default: auto)\n";
   std::cerr << "  --passes <n>    greedy optimization passes (default: 12)\n";
-  std::cerr << "  --max-speed     favor highest runtime speed flags\n";
+  std::cerr << "  -O4             primary max-speed profile (preferred)\n";
+  std::cerr << "  --max-speed     compatibility alias for -O4\n";
   std::cerr << "  --keep-c        keep generated C when --build\n";
   std::cerr << "  --LineScript    print LineScript version\n";
   std::cerr << "  --super-speed   reserved tuning flag\n";
@@ -9633,16 +9740,19 @@ static void validatePathForShell(const std::filesystem::path &p, const std::stri
 }
 
 static Opt parseOpt(int argc, char **argv) {
-  if (argc < 2) {
-    usage();
-    throw std::runtime_error("missing input file");
-  }
   Opt o;
+  if (argc < 2) {
+    o.repl = true;
+    validateCompilerCommand(o.cc);
+    return o;
+  }
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--help") {
       usage();
       std::exit(0);
+    } else if (a == "--repl" || a == "--shell") {
+      o.repl = true;
     } else if (a == "--LineScript") {
       o.infoMessages.push_back("LineScript version " + lineScriptVersionDisplay());
       o.cliFlags.push_back(a);
@@ -9667,9 +9777,9 @@ static Opt parseOpt(int argc, char **argv) {
       o.build = true;
     } else if (a == "--keep-c") {
       o.keepC = true;
-    } else if (a == "--max-speed") {
+    } else if (a == "-O4" || a == "--max-speed") {
       o.maxSpeed = true;
-      if (o.passes < 24) o.passes = 24;
+      if (o.passes < 32) o.passes = 32;
     } else if (a == "--cc") {
       if (i + 1 >= argc) throw std::runtime_error("missing value for --cc");
       o.cc = argv[++i];
@@ -9704,7 +9814,10 @@ static Opt parseOpt(int argc, char **argv) {
       o.inputs.push_back(std::move(in));
     }
   }
-  if (o.inputs.empty()) {
+  if (o.repl && (o.check || o.build || o.run)) {
+    throw std::runtime_error("--repl/--shell cannot be combined with --check/--build/--run");
+  }
+  if (o.inputs.empty() && !o.repl) {
     if (!o.infoMessages.empty() && !o.check && !o.build && !o.run) {
       o.infoOnly = true;
       return o;
@@ -9793,6 +9906,218 @@ static std::string flagsForAsmLink(const std::string &flags) {
     }
   }
   return out.str();
+}
+
+static std::string trimCopy(const std::string &s) {
+  std::size_t b = 0;
+  std::size_t e = s.size();
+  while (b < e && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+  return s.substr(b, e - b);
+}
+
+static int replBlockDeltaLine(const std::string &line) {
+  int delta = 0;
+  bool inStr = false;
+  bool esc = false;
+  std::string tok;
+  auto flushTok = [&]() {
+    if (tok == "do") {
+      ++delta;
+    } else if (tok == "end") {
+      --delta;
+    }
+    tok.clear();
+  };
+  for (std::size_t i = 0; i < line.size(); ++i) {
+    char c = line[i];
+    if (inStr) {
+      if (esc) {
+        esc = false;
+      } else if (c == '\\') {
+        esc = true;
+      } else if (c == '"') {
+        inStr = false;
+      }
+      continue;
+    }
+    if (c == '/' && i + 1 < line.size() && line[i + 1] == '/') {
+      break;
+    }
+    if (c == '"') {
+      flushTok();
+      inStr = true;
+      continue;
+    }
+    if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+      tok.push_back(c);
+      continue;
+    }
+    flushTok();
+    if (c == '{') {
+      ++delta;
+    } else if (c == '}') {
+      --delta;
+    }
+  }
+  flushTok();
+  return delta;
+}
+
+static bool replShouldPersist(const std::string &snippet) {
+  const std::string low = lowerCopy(snippet);
+  if (low.find("print(") != std::string::npos) return false;
+  if (low.find("println(") != std::string::npos) return false;
+  if (low.find(".statespeed(") != std::string::npos) return false;
+  if (low.find("formatoutput(") != std::string::npos) return false;
+  return true;
+}
+
+static bool replContainsSuperuser(const std::string &snippet) {
+  return lowerCopy(snippet).find("superuser(") != std::string::npos;
+}
+
+static std::string replUserName() {
+#if defined(_WIN32)
+  char *buf = nullptr;
+  std::size_t n = 0;
+  if (_dupenv_s(&buf, &n, "USERNAME") == 0 && buf != nullptr && *buf != '\0') {
+    std::string name(buf);
+    std::free(buf);
+    return name;
+  }
+  if (buf != nullptr) std::free(buf);
+  buf = nullptr;
+  n = 0;
+  if (_dupenv_s(&buf, &n, "USER") == 0 && buf != nullptr && *buf != '\0') {
+    std::string name(buf);
+    std::free(buf);
+    return name;
+  }
+  if (buf != nullptr) std::free(buf);
+#else
+  const char *name = std::getenv("USERNAME");
+  if (name != nullptr && *name != '\0') return std::string(name);
+  name = std::getenv("USER");
+  if (name != nullptr && *name != '\0') return std::string(name);
+#endif
+  return "user";
+}
+
+static int runRepl(const Opt &o, const std::string &argv0) {
+  std::string prelude;
+  for (const auto &in : o.inputs) {
+    std::string src = readFile(in);
+    prelude += src;
+    if (prelude.empty() || prelude.back() != '\n') prelude.push_back('\n');
+  }
+
+  const auto ticks =
+      std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch())
+          .count();
+  std::filesystem::path replBase = std::filesystem::temp_directory_path() / ("linescript_repl_" + std::to_string(ticks));
+  std::filesystem::path replSrc = replBase;
+  replSrc += ".lsc";
+  std::filesystem::path replBin = replBase;
+#if defined(_WIN32)
+  replBin += ".exe";
+#endif
+
+  std::vector<std::string> persisted;
+  std::string pending;
+  int depth = 0;
+  const std::string baseUser = replUserName();
+  bool superuserPrompt = false;
+
+  std::cout << "LineScript shell " << lineScriptVersionDisplay() << '\n';
+  std::cout << "Type :help for commands, :exit to quit.\n";
+  std::cout.flush();
+
+  auto renderPrompt = [&]() {
+    if (depth > 0) return std::string("... ");
+    const std::string who = superuserPrompt ? "superuser" : baseUser;
+    return who + "@LineScript> ";
+  };
+
+  while (true) {
+    std::cout << renderPrompt() << std::flush;
+    std::string line;
+    if (!std::getline(std::cin, line)) {
+      std::cout << '\n';
+      break;
+    }
+
+    if (depth == 0) {
+      const std::string t = trimCopy(line);
+      if (t.empty()) continue;
+      if (t == ":exit" || t == ":quit") break;
+      if (t == ":help") {
+        std::cout << "REPL commands:\n";
+        std::cout << "  :help   show this help\n";
+        std::cout << "  :reset  clear interactive session state\n";
+        std::cout << "  :whoami print current shell identity\n";
+        std::cout << "  :exit   quit shell\n";
+        continue;
+      }
+      if (t == ":reset") {
+        persisted.clear();
+        pending.clear();
+        depth = 0;
+        superuserPrompt = false;
+        std::cout << "Session reset.\n";
+        continue;
+      }
+      if (t == ":whoami") {
+        std::cout << (superuserPrompt ? "superuser" : baseUser) << '\n';
+        continue;
+      }
+    }
+
+    pending += line;
+    pending.push_back('\n');
+    depth += replBlockDeltaLine(line);
+    if (depth > 0) continue;
+    if (depth < 0) {
+      std::cerr << "REPL warning: unmatched 'end' or '}'\n";
+      pending.clear();
+      depth = 0;
+      continue;
+    }
+
+    const std::string snippet = trimCopy(pending);
+    pending.clear();
+    if (snippet.empty()) continue;
+
+    std::ostringstream src;
+    src << ".format()\n";
+    src << prelude;
+    for (const std::string &s : persisted) {
+      src << s;
+      if (s.empty() || s.back() != '\n') src << '\n';
+    }
+    src << snippet << '\n';
+    writeFile(replSrc, src.str());
+
+    std::ostringstream cmd;
+    cmd << qCmd(argv0) << " " << q(replSrc) << " --run --cc " << qCmd(o.cc) << " --backend " << o.backend
+        << " --passes " << o.passes << " -o " << q(replBin);
+    if (o.maxSpeed) cmd << " -O4";
+
+    const int rc = std::system(cmd.str().c_str());
+    if (rc == 0) {
+      if (replShouldPersist(snippet)) {
+        persisted.push_back(snippet);
+      }
+      if (replContainsSuperuser(snippet)) superuserPrompt = true;
+    } else {
+      std::cerr << "REPL: command failed; session state unchanged.\n";
+    }
+  }
+
+  std::error_code ec;
+  std::filesystem::remove(replSrc, ec);
+  std::filesystem::remove(replBin, ec);
+  return 0;
 }
 
 static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, bool hasParallelFor,
@@ -10069,6 +10394,9 @@ int main(int argc, char **argv) {
     ls::Opt o = ls::parseOpt(argc, argv);
     for (const std::string &msg : o.infoMessages) std::cout << msg << '\n';
     if (o.infoOnly) return 0;
+    if (o.repl) {
+      return ls::runRepl(o, (argc > 0 && argv[0] != nullptr) ? argv[0] : "lsc");
+    }
     ls::setSuperuserLogging(false, false);
     ls::Program p;
     for (const auto &input : o.inputs) {

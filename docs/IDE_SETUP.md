@@ -10,7 +10,7 @@ This guide shows exactly how to start a fresh LineScript project in VS Code and 
 
 Linux:
 - build `lsc` from `src/lsc.cpp`
-- run `./lsc ./main.lsc --max-speed --cc clang` (or `--cc gcc`)
+- run `./lsc ./main.lsc -O4 --cc clang` (or `--cc gcc`)
 
 ## 2. Fresh Project From `dist` (Copy-Paste Ready)
 
@@ -20,7 +20,7 @@ Linux:
 4. Run:
 
 ```powershell
-.\linescript.cmd .\main.lsc --max-speed --cc clang
+.\linescript.cmd .\main.lsc -O4 --cc clang
 ```
 
 This works without `src/lsc.cpp` because the packaged `lsc.exe` is already included.
@@ -28,7 +28,7 @@ This works without `src/lsc.cpp` because the packaged `lsc.exe` is already inclu
 Linux equivalent:
 
 ```bash
-./lsc ./main.lsc --max-speed --cc clang
+./lsc ./main.lsc -O4 --cc clang
 ```
 
 ## 3. Fresh Project (Any Editor)
@@ -61,13 +61,13 @@ end
 4. Run:
 
 ```powershell
-.\linescript.cmd .\main.lsc --max-speed --cc clang
+.\linescript.cmd .\main.lsc -O4 --cc clang
 ```
 
 Linux/macOS:
 
 ```bash
-./linescript.sh ./main.lsc --max-speed --cc clang
+./linescript.sh ./main.lsc -O4 --cc clang
 ```
 
 5. Check syntax/types only:
@@ -94,29 +94,90 @@ If you are using VS Code, copy this into your project root:
 
 If you are **not** using VS Code, you can ignore `.vscode/tasks.json` and `.vscode/launch.json`.
 
-Optional file association in `.vscode/settings.json`:
+Recommended `.vscode/settings.json`:
 
 ```json
 {
   "files.associations": {
-    "*.lsc": "javascript",
-    "*.ls": "javascript"
+    "*.lsc": "linescript",
+    "*.ls": "linescript"
+  },
+  "[linescript]": {
+    "editor.defaultFormatter": "linescript.linescript-vscode",
+    "editor.formatOnSave": true
   }
 }
 ```
+
+Optional (only if you want LineScript-specific file icons for the whole workspace):
+
+```json
+{
+  "workbench.iconTheme": "linescript-seti-icons"
+}
+```
+
+## 4.1 Install the LineScript VSCode Extension (LSP + Suggestions)
+
+The repository now includes:
+- `vscode-extension/linescript-vscode`
+
+This extension adds:
+- syntax highlighting for `.lsc` and `.ls`
+- autocomplete + snippets
+- hover docs
+- go-to-definition and outline symbols
+- live diagnostics from `lsc --check`
+- suggestion diagnostics (for example: `Are you sure this is correct?` on suspicious condition assignments)
+- quick fixes for common mistakes
+
+Normal use (recommended, one-time install):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install_vscode_extension.ps1
+```
+
+Linux/macOS:
+
+```bash
+bash ./scripts/install_vscode_extension.sh
+```
+
+This installs a VSIX directly into your VS Code profile. After that:
+- formatting works with `Shift+Alt+F`
+- format-on-save works for `.lsc`/`.ls`
+- LineScript file icons are applied
+
+`F5` / Extension Development Host is only needed when you are actively developing the extension itself.
+
+Key extension settings:
+- `linescript.lscPath`
+- `linescript.backendCompiler`
+- `linescript.checkOnType`
+- `linescript.checkOnSave`
+- `linescript.checkTimeoutMs`
+- `linescript.extraCheckArgs`
+- `linescript.hintsEnabled`
+- `linescript.maxHintsPerFile`
+
+File icons:
+- the extension includes:
+- `LineScript + Seti Icons` (recommended): keeps normal per-language icons and maps `.lsc`/`.ls` to the LineScript logo.
+- enable via `Preferences: File Icon Theme`.
+- to use your own logo exactly, replace `vscode-extension/linescript-vscode/icons/linescript-file.svg`.
 
 ## 5. Other IDEs
 
 Use the same command in a Run/External Tool configuration:
 
 ```text
-.\linescript.cmd .\main.lsc --max-speed --cc clang
+.\linescript.cmd .\main.lsc -O4 --cc clang
 ```
 
 Linux equivalent:
 
 ```text
-./lsc ./main.lsc --max-speed --cc clang
+./lsc ./main.lsc -O4 --cc clang
 ```
 
 For validation-only builds:
@@ -135,7 +196,7 @@ Examples:
 Compile modules in one run command:
 
 ```powershell
-.\linescript.cmd .\src\math.lsc .\src\main.lsc --max-speed --cc clang
+.\linescript.cmd .\src\math.lsc .\src\main.lsc -O4 --cc clang
 ```
 
 All functions across listed files are compiled into one native program.

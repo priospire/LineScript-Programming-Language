@@ -1,0 +1,146 @@
+// LineScript LSP Diagnostics Gauntlet
+// Purpose: trigger as many editor warnings/errors as possible.
+// Open this file in VSCode with LineScript mode + extension enabled.
+
+// ls-unexpected-end
+end
+
+// ls-undeclared-assign
+u = 1
+
+// ls-undeclared-var
+println(v)
+
+// ls-input-ignored
+input("name?")
+
+// ls-printin-typo
+printIn("typo")
+
+// ls-assign-in-condition
+declare x: i64 = 1
+if x = 1 do
+  println("assign in condition")
+end
+
+// ls-compare-true / ls-compare-false
+if x == true do
+  println("true compare")
+end
+if x == false do
+  println("false compare")
+end
+
+// ls-else-if-style
+if x == 1 do
+  println("x")
+else if x == 2 do
+  println("y")
+end
+
+// ls-triple-dot-range
+for i in 0...5 do
+  println(i)
+end
+
+// ls-zero-step
+for j in 0..10 step 0 do
+  println(j)
+end
+
+// ls-c-style-block
+if (x == 1) do
+  println("c style condition")
+end
+
+// ls-python-colon-block
+if x:
+  println("python colon")
+end
+
+// ls-missing-do
+if x > 0
+  println("missing do")
+end
+
+// ls-compound-assignment / ls-unneeded-semicolon
+declare count = 0
+count = count + 1;
+
+// ls-duplicate-declare
+declare dup = 1
+declare dup = 2
+
+// ls-const-reassign
+declare const c: i64 = 10
+c = 11
+
+// ls-break-outside-loop / ls-continue-outside-loop
+break
+continue
+
+// ls-reserved-builtin-name / ls-builtin-signature-mismatch
+print() {
+  println("shadowing builtin")
+}
+
+// ls-malformed-params
+badparams(a b) -> i64 do
+  return 0
+end
+
+// ls-duplicate-param
+dupparam(a: i64, a: i64) -> i64 do
+  return a
+end
+
+// ls-malformed-function-signature
+fn broken(a: i64 -> i64
+
+// ls-malformed-flag-name
+flag hello-world() do
+  println("flag")
+end
+
+// ls-malformed-declare
+declare = 42
+
+// ls-function-arity
+println()
+
+// user-defined arity mismatch
+adder(a: i64, b: i64) -> i64 do
+  return a + b
+end
+println(adder(1))
+
+// ls-unknown-function
+not_a_func(1, 2)
+
+// ls-malformed-call-args
+max(1,,2)
+
+// ls-malformed-call / ls-unbalanced-parens
+println(1
+
+// ls-divide-by-zero-literal
+declare dz = 5 / 0
+
+// ls-unknown-dot-call
+.mystery()
+
+// ls-dot-call-arity
+.stateSpeed(1)
+
+// ls-unreachable-statement
+unreachable_test() -> i64 do
+  return 1
+  declare after = 2
+end
+
+// ls-unknown-statement
+this is definitely malformed syntax
+
+// ls-missing-end (intentional: leave block open)
+if true do
+  println("missing end")

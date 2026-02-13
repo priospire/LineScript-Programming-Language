@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -eq 0 ]]; then
-  echo "Usage: ./linescript.sh <file1.lsc> [file2.lsc ...] [lsc options]"
-  echo "Default behavior: auto-build compiler, then build+run program."
-  exit 1
-fi
-
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 compiler_src_primary="$root/src/lsc.cpp"
 compiler_src_fallback="$root/lsc.cpp"
@@ -74,9 +68,13 @@ fi
 has_input=0
 has_action=0
 wants_help=0
+wants_repl=0
 for arg in "$@"; do
   if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
     wants_help=1
+  fi
+  if [[ "$arg" == "--repl" || "$arg" == "--shell" ]]; then
+    wants_repl=1
   fi
   if [[ "$arg" == "--check" || "$arg" == "--build" || "$arg" == "--run" ]]; then
     has_action=1
@@ -88,13 +86,21 @@ for arg in "$@"; do
   fi
 done
 
-if [[ $has_input -eq 0 && $wants_help -eq 0 ]]; then
+if [[ $# -eq 0 ]]; then
+  wants_repl=1
+fi
+
+if [[ $has_input -eq 0 && $wants_help -eq 0 && $wants_repl -eq 0 ]]; then
   echo "No .lsc/.ls input file found in arguments." >&2
   exit 1
 fi
 
-final_args=("$@")
-if [[ $has_action -eq 0 ]]; then
+if [[ $# -eq 0 ]]; then
+  final_args=(--repl)
+else
+  final_args=("$@")
+fi
+if [[ $has_input -eq 1 && $has_action -eq 0 ]]; then
   final_args+=("--build" "--run")
 fi
 

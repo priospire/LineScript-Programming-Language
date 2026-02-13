@@ -2,6 +2,9 @@
 
 These built-ins are available without imports.
 
+For the exhaustive API catalog (including key name tables, scroll wheel, mouse buttons, and platform behavior),
+see `docs/API_REFERENCE.md`.
+
 ## 1. Core I/O
 
 ```linescript
@@ -360,6 +363,10 @@ game_mouse_x(game: i64) -> f64
 game_mouse_y(game: i64) -> f64
 game_mouse_norm_x(game: i64) -> f64
 game_mouse_norm_y(game: i64) -> f64
+game_scroll_x(game: i64) -> f64
+game_scroll_y(game: i64) -> f64
+game_mouse_down(game: i64, button: i64) -> bool
+game_mouse_down_name(game: i64, name: str) -> bool
 game_clear(game: i64, r: i64, g: i64, b: i64) -> void
 game_set(game: i64, x: i64, y: i64, r: i64, g: i64, b: i64) -> void
 game_get(game: i64, x: i64, y: i64) -> i64
@@ -380,6 +387,10 @@ Notes:
 - mouse coordinates are normalized from window client size into internal simulation resolution.
 - `game_mouse_x/y` return simulation-space coordinates.
 - `game_mouse_norm_x/y` return normalized `[0.0, 1.0]` coordinates.
+- `game_scroll_x/y` return per-frame wheel deltas.
+- `game_mouse_down` button mapping:
+- `1=LEFT`, `2=RIGHT`, `3=MIDDLE`, `4=X1`, `5=X2`
+- `game_mouse_down_name` accepts: `LEFT`, `RIGHT`, `MIDDLE`, `X1`, `X2`.
 
 Example:
 
@@ -437,6 +448,7 @@ Notes:
 - `soft = true` enables spring-like damping behavior; `soft = false` is rigid-body style.
 - `phys_step(dt)` ignores `dt <= 0`.
 - key polling is native on Windows; other platforms safely return `false`.
+- `key_down_name` accepts: `W`, `A`, `S`, `D`, `UP`, `DOWN`, `LEFT`, `RIGHT`, `SPACE`, `ESC`, `SHIFT`, `CTRL`, `ENTER`.
 
 Example:
 
@@ -588,10 +600,14 @@ pg_mouse_x(game: i64) -> f64
 pg_mouse_y(game: i64) -> f64
 pg_mouse_norm_x(game: i64) -> f64
 pg_mouse_norm_y(game: i64) -> f64
+pg_scroll_x(game: i64) -> f64
+pg_scroll_y(game: i64) -> f64
 pg_delta(game: i64) -> f64
 pg_frame(game: i64) -> i64
 pg_key_down(code: i64) -> bool
 pg_key_down_name(name: str) -> bool
+pg_mouse_down(game: i64, button: i64) -> bool
+pg_mouse_down_name(game: i64, name: str) -> bool
 pg_surface_new(width: i64, height: i64) -> i64
 pg_surface_free(surface: i64) -> void
 pg_surface_clear(surface: i64, r: i64, g: i64, b: i64) -> void

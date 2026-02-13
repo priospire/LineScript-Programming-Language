@@ -2,25 +2,29 @@
 
 This guide explains how to write and run LineScript programs quickly.
 
+For the full API catalog (including key names, mouse buttons, and scroll wheel APIs), see
+`docs/API_REFERENCE.md`.
+
 ## 1. Running Code
 
 Fastest workflow on Windows:
 
 ```powershell
-.\linescript.cmd your_file.lsc --max-speed --cc clang
+.\linescript.cmd your_file.lsc -O4 --cc clang
 ```
 
 Linux/macOS equivalent:
 
 ```bash
-./lsc your_file.lsc --run --max-speed --cc clang
+./lsc your_file.lsc --run -O4 --cc clang
 ```
 
 Performance note:
-- treat `--max-speed` as the standard release mode.
-- use non-`--max-speed` builds mainly for debugging.
+- treat `-O4` as the standard release mode.
+- `--max-speed` is still supported as a compatibility alias.
+- use non-`-O4` builds mainly for debugging.
 - backend defaults to `--backend auto` (x86 asm-first, then C++/C fallback).
-- on Windows, `--max-speed` can use an ultra-minimal backend path for eligible programs to reduce startup overhead.
+- on Windows, `-O4` can use an ultra-minimal backend path for eligible programs to reduce startup overhead.
 - on Linux, threading-enabled builds (`spawn`/`await`) automatically link with `-pthread`.
 
 Behavior:
@@ -30,7 +34,7 @@ Behavior:
 Manual usage:
 
 ```powershell
-.\lsc.exe your_file.lsc --run --max-speed --cc clang
+.\lsc.exe your_file.lsc --run -O4 --cc clang
 ```
 
 Fast syntax/type validation without building:
@@ -654,7 +658,7 @@ println(clamp(1.5, 0.0, 1.0))
 Compile multiple files as one program:
 
 ```powershell
-.\lsc.exe examples\module_math.lsc examples\module_main.lsc --run --max-speed --cc clang
+.\lsc.exe examples\module_math.lsc examples\module_main.lsc --run -O4 --cc clang
 ```
 
 ## 16. Benchmarking
@@ -678,13 +682,13 @@ end
 External timing from PowerShell:
 
 ```powershell
-.\lsc.exe examples\benchmark.lsc --build --cc clang --max-speed -o examples\benchmark.exe
+.\lsc.exe examples\benchmark.lsc --build --cc clang -O4 -o examples\benchmark.exe
 Measure-Command { .\examples\benchmark.exe > $null }
 ```
 
 ## 17. Performance Checklist
 
-1. Build with `--max-speed`.
+1. Build with `-O4` (or `--max-speed` alias).
 2. Keep hot loops numeric and simple.
 3. Use `inline` for very small hot functions.
 4. Use `i64` unless `f64` is required.

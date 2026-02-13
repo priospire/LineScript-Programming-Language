@@ -1,0 +1,108 @@
+{
+  "name": "LineScript",
+  "scopeName": "source.linescript",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#functionMain"
+    },
+    {
+      "include": "#keywordInlineFn"
+    },
+    {
+      "include": "#keyword"
+    },
+    {
+      "include": "#type"
+    },
+    {
+      "include": "#builtinSuperuser"
+    },
+    {
+      "include": "#builtin"
+    },
+    {
+      "include": "#operator"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.linescript",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.linescript",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.linescript",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "number": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.linescript",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.linescript",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "functionMain": {
+      "match": "^\\s*((?:(?:inline|extern|fn|func)\\s+)*)\\b(main)(?=\\s*\\([^\\n)]*\\)\\s*(?:->\\s*[A-Za-z_][A-Za-z0-9_]*\\s*)?(?:throws\\s+[A-Za-z_][A-Za-z0-9_]*(?:\\s*,\\s*[A-Za-z_][A-Za-z0-9_]*)*\\s*)?(?:do\\b|\\{))",
+      "captures": {
+        "1": {
+          "name": "keyword.control.modifier.linescript"
+        },
+        "2": {
+          "name": "entity.name.function.main.linescript"
+        }
+      }
+    },
+    "keywordInlineFn": {
+      "name": "keyword.control.modifier.linescript",
+      "match": "\\b(inline|fn)\\b"
+    },
+    "keyword": {
+      "name": "keyword.control.linescript",
+      "match": "\\b(declare|const|owned|return|if|elif|else|unless|while|for|parallel|in|step|do|end|class|constructor|throws|break|continue|true|false|and|or|not|extern|func|flag)\\b"
+    },
+    "type": {
+      "name": "storage.type.linescript",
+      "match": "\\b(i32|i64|f32|f64|bool|str|void)\\b"
+    },
+    "builtinSuperuser": {
+      "match": "\\b(superuser)(?=\\s*\\()",
+      "captures": {
+        "1": {
+          "name": "support.function.superuser.linescript"
+        }
+      }
+    },
+    "builtin": {
+      "name": "support.function.linescript",
+      "match": "\\b(print|println|input|input_i64|input_f64|len|contains|includes|replace|array_[A-Za-z0-9_]+|dict_[A-Za-z0-9_]+|map_[A-Za-z0-9_]+|object_[A-Za-z0-9_]+|option_[A-Za-z0-9_]+|result_[A-Za-z0-9_]+|mem_[A-Za-z0-9_]+|gfx_[A-Za-z0-9_]+|game_[A-Za-z0-9_]+|pg_[A-Za-z0-9_]+|np_[A-Za-z0-9_]+|phys_[A-Za-z0-9_]+|camera_[A-Za-z0-9_]+|key_down|key_down_name|clock_ms|clock_us|stateSpeed|superuser|su\\.[A-Za-z0-9_.]+|formatOutput|FormatOutput|sqrt|sin|cos|tan|asin|acos|atan|atan2|exp|log|log10|floor|ceil|round|pow|gcd|lcm|max|min|abs|clamp|to_i32|to_i64|to_f32|to_f64|parse_i64|parse_f64)\\b"
+    },
+    "operator": {
+      "name": "keyword.operator.linescript",
+      "match": "(\\+\\+|--|\\+=|-=|\\*=|/=|%=|\\^=|\\*\\*=|==|!=|<=|>=|&&|\\|\\||\\+|-|\\*|/|%|\\^|\\*\\*|=|<|>)"
+    }
+  }
+}

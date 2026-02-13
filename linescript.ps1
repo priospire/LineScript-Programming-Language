@@ -1,11 +1,5 @@
 $ErrorActionPreference = "Stop"
 
-if ($args.Count -eq 0) {
-  Write-Host "Usage: .\linescript.ps1 <file1.lsc> [file2.lsc ...] [lsc options]"
-  Write-Host "Default behavior: auto-build compiler, then build+run program."
-  exit 1
-}
-
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $compilerSrcPrimary = Join-Path $root "src\\lsc.cpp"
 $compilerSrcFallback = Join-Path $root "lsc.cpp"
@@ -57,9 +51,13 @@ if ($needsBuild) {
 $hasInput = $false
 $hasAction = $false
 $wantsHelp = $false
+$wantsRepl = $false
 foreach ($arg in $args) {
   if ($arg -eq "--help" -or $arg -eq "-h") {
     $wantsHelp = $true
+  }
+  if ($arg -eq "--repl" -or $arg -eq "--shell") {
+    $wantsRepl = $true
   }
   if ($arg -eq "--check") {
     $hasAction = $true
@@ -75,12 +73,16 @@ foreach ($arg in $args) {
   }
 }
 
-if ((-not $hasInput) -and (-not $wantsHelp)) {
+if ($args.Count -eq 0) {
+  $wantsRepl = $true
+}
+
+if ((-not $hasInput) -and (-not $wantsHelp) -and (-not $wantsRepl)) {
   throw "No .lsc/.ls input file found in arguments."
 }
 
-$finalArgs = @($args)
-if (-not $hasAction) {
+$finalArgs = if ($args.Count -eq 0) { @("--repl") } else { @($args) }
+if ($hasInput -and (-not $hasAction)) {
   $finalArgs += "--build"
   $finalArgs += "--run"
 }
