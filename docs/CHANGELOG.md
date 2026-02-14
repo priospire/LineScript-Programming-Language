@@ -6,14 +6,28 @@
 - interactive LineScript shell (REPL) inside `lsc`:
 - launch with no args (`lsc.exe`) or explicit `--repl` / `--shell`.
 - shell meta-commands: `:help`, `:reset`, `:whoami`, `:exit` / `:quit`.
+- superuser REPL verbosity command: `su.verbosity.1` to `su.verbosity.5` (privileged only).
 - multiline block input support with continuation prompt (`...`) for `do/end` and `{}` blocks.
 - session-state replay for persisted commands.
 - user-style prompt (`<user>@LineScript>`) that switches to `superuser@LineScript>` after successful `superuser()` execution.
+- cross-editor config bundle at `editor-configs/`:
+- universal LSP template
+- JetBrains, Notepad++, Neovim, Helix, Sublime Text, Vim (coc.nvim), Emacs (eglot), and Zed.
+- REPL privileged helper command: `su.help` (superuser-only) to list shell controls and privileged APIs.
 
 ### Changed
 - bumped runtime/compiler version output to `1.4.6` (`--LineScript` now reports `LineScript version 1.4.6`).
 - updated CLI usage text with shell-mode help (`--repl`, `--shell`, and no-arg shell behavior).
 - `linescript.ps1` and `linescript.sh` now default to REPL when run without source file args.
+- REPL superuser handling is session-based and no longer depends on persisting literal `superuser()` lines as normal state.
+- REPL `superuser()` now toggles ON/OFF mode.
+- superuser warning emission now occurs on activation, not on every REPL command.
+- REPL-only print behavior now normalizes `print(...)` to newline output (`println(...)`) so shell prompts never concatenate with output.
+- superuser logging now supports levels 1..5 with increasing detail (high levels include syntax summaries and full compile commands).
+- superuser verbosity depth now includes lex/parse tracing:
+- level 1 stays concise.
+- level 5 now logs source stats and token-by-token lexer output in addition to full compile command tracing.
+- superuser mode guardrail relaxation was expanded in type-check paths so more LineScript safety checks downgrade to warnings while backend compiler/toolchain validation continues.
 - updated VSCode grammar precedence so `fn` / `inline` keep modifier highlighting before `main()`.
 - updated syntax coloring so:
 - `main` remains red and non-bold.
@@ -27,6 +41,10 @@
 - no-arg `lsc.exe` starts shell and exits cleanly with `:exit`.
 - declare/assign/print flow works interactively.
 - `superuser()` changes prompt identity to `superuser`.
+- added runtime regression: `tests/cases/runtime/superuser_relaxed_if_non_bool.lsc`.
+- added REPL regressions:
+- `repl_superuser_help_not_privileged`
+- `repl_superuser_help_privileged`
 
 ## 2026-02-13 (LineScript v1.4.5)
 

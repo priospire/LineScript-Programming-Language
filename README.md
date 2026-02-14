@@ -18,6 +18,7 @@ Documentation map:
 - language guide: `docs/LANGUAGE_GUIDE.md`
 - complete API reference: `docs/API_REFERENCE.md`
 - IDE setup (including VSCode extension): `docs/IDE_SETUP.md`
+- ready configs for other IDEs/editors: `editor-configs/README.md`
 
 VSCode extension source:
 - `vscode-extension/linescript-vscode`
@@ -80,11 +81,19 @@ REPL commands:
 - `:help` show help
 - `:reset` clear session state
 - `:whoami` show current shell identity
+- `su.verbosity.1` ... `su.verbosity.5` set superuser verbosity level (superuser mode only)
+- `su.help` show superuser-only shell commands and privileged APIs (requires superuser mode)
 - `:exit` / `:quit` leave shell
 
 Prompt behavior:
 - default prompt is `<username>@LineScript>`.
 - after successful `superuser()`, prompt switches to `superuser@LineScript>`.
+- `superuser()` is a REPL toggle: run once to enable, run again to disable.
+- verbosity profile: level 1 is concise stage/warning output, level 5 is full source->lexer->parser->build tracing.
+
+Shell-only output behavior:
+- in REPL mode, `print(...)` is treated as `println(...)` so output stays clean and does not merge with the prompt.
+- this does **not** change file/script behavior in normal compilation; outside REPL, `print` remains non-newline.
 
 ## Core Syntax
 
@@ -398,6 +407,7 @@ Behavior:
 - enabling `superuser()` prints a terminal warning because checks are intentionally relaxed.
 - with `.format()`, superuser diagnostics are routed to debug/error output while keeping normal program output clean.
 - superuser helpers include `su.memory.inspect()`, `su.limit.set(...)`, `su.compiler.inspect()`, `su.ir.dump()`, and `su.debug.hook("tag")`.
+- in superuser mode, LineScript guardrails are relaxed and downgraded to warnings where possible, then backend compiler/toolchain validation continues.
 
 Inline console detach marker (no closing statement):
 

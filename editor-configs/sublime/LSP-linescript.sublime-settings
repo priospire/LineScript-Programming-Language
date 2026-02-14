@@ -1,0 +1,19 @@
+{
+  "clients": {
+    "linescript": {
+      "enabled": true,
+      "command": ["node", "vscode-extension/linescript-vscode/server/server.js"],
+      "selector": "source.linescript",
+      "initializationOptions": {},
+      "settings": {
+        "linescript.lscPath": "lsc.exe",
+        "linescript.backendCompiler": "clang",
+        "linescript.checkOnType": true,
+        "linescript.checkOnSave": true,
+        "linescript.checkTimeoutMs": 8000,
+        "linescript.hintsEnabled": true,
+        "linescript.maxHintsPerFile": 120
+      }
+    }
+  }
+}

@@ -370,6 +370,9 @@ Notes:
 - without `superuser()`, any `su.*` call fails with `Not privileged`.
 - with `superuser()`, LineScript prints a terminal warning because checks are intentionally relaxed.
 - `.format()` keeps normal program output clean and routes superuser diagnostics to debug/error output.
+- shell-only: `su.help` lists superuser shell controls and privileged APIs (requires superuser mode).
+- shell-only: `su.verbosity.1` is concise, while `su.verbosity.5` enables full source -> lexer -> parser -> build trace output.
+- superuser mode relaxes most LineScript guardrails into warnings and lets backend compiler/toolchain validation continue.
 - useful superuser calls:
 - `su.memory.inspect()`
 - `su.limit.set(step_limit, mem_limit)`

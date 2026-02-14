@@ -106,6 +106,7 @@ cp "$root/README.md" "$bundle_dir/README.md"
 
 mkdir -p "$bundle_dir/docs" "$bundle_dir/examples" "$bundle_dir/tests" "$bundle_dir/scripts" "$bundle_dir/.vscode"
 mkdir -p "$bundle_dir/vscode-extension"
+mkdir -p "$bundle_dir/editor-configs"
 
 if [[ -d "$root/docs" ]]; then
   find "$root/docs" -maxdepth 1 -type f -name "*.md" -exec cp {} "$bundle_dir/docs/" \;
@@ -136,6 +137,9 @@ done
 if [[ -d "$root/vscode-extension/linescript-vscode" ]]; then
   cp -r "$root/vscode-extension/linescript-vscode" "$bundle_dir/vscode-extension/linescript-vscode"
   rm -rf "$bundle_dir/vscode-extension/linescript-vscode/node_modules"
+fi
+if [[ -d "$root/editor-configs" ]]; then
+  cp -r "$root/editor-configs/." "$bundle_dir/editor-configs/"
 fi
 
 if command -v zip >/dev/null 2>&1; then

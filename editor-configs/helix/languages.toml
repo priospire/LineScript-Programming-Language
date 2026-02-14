@@ -1,0 +1,16 @@
+# Merge into ~/.config/helix/languages.toml
+
+[[language]]
+name = "linescript"
+scope = "source.linescript"
+file-types = ["lsc", "ls"]
+roots = [".git", "README.md", "lsc.cpp", "src/lsc.cpp"]
+auto-format = true
+
+[language-server.linescript-lsp]
+command = "node"
+args = ["vscode-extension/linescript-vscode/server/server.js"]
+
+[[language]]
+name = "linescript"
+language-servers = ["linescript-lsp"]

@@ -503,6 +503,9 @@ Rules:
 - calling `su.*` without `superuser()` fails with: `Not privileged`.
 - when `superuser()` is present, LineScript prints a terminal warning that safety checks are relaxed.
 - in `.format()` mode, superuser debug logs are sent to debug/error output instead of normal program output.
+- in shell mode, `su.help` is a privileged command that prints available superuser shell controls and APIs.
+- in shell mode, `su.verbosity.1` is minimal and `su.verbosity.5` is extremely verbose (source, lex/token, parse, and compile command tracing).
+- in superuser mode, most LineScript guardrails are downgraded to warnings so backend compiler/toolchain validation can continue.
 - syntax/parse errors and impossible-to-compile code are still errors.
 
 Postfix increment/decrement:

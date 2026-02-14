@@ -191,6 +191,23 @@ Examples:
 - JetBrains IDEs: External Tool or Run Configuration
 - Sublime/TextMate/Notepad++: custom build command
 
+### 5.1 Ready Config Bundle (Copy/Paste)
+
+Use the prebuilt editor configs in:
+
+- `editor-configs/README.md`
+
+Included:
+- universal LSP template
+- JetBrains (external tools + LSP setup notes)
+- Notepad++ (UDL + NppExec script)
+- Neovim (`nvim-lspconfig`)
+- Helix (`languages.toml`)
+- Sublime Text (build + LSP settings)
+- Vim (`coc.nvim`)
+- Emacs (`eglot`)
+- Zed
+
 ## 6. Multi-File Project
 
 Compile modules in one run command:

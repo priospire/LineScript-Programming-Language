@@ -60,12 +60,14 @@ $testsOut = Join-Path $bundleDir "tests"
 $scriptsOut = Join-Path $bundleDir "scripts"
 $vscodeOut = Join-Path $bundleDir ".vscode"
 $vscodeExtOut = Join-Path $bundleDir "vscode-extension"
+$editorConfigsOut = Join-Path $bundleDir "editor-configs"
 New-Item -ItemType Directory -Path $docsOut | Out-Null
 New-Item -ItemType Directory -Path $examplesOut | Out-Null
 New-Item -ItemType Directory -Path $testsOut | Out-Null
 New-Item -ItemType Directory -Path $scriptsOut | Out-Null
 New-Item -ItemType Directory -Path $vscodeOut | Out-Null
 New-Item -ItemType Directory -Path $vscodeExtOut | Out-Null
+New-Item -ItemType Directory -Path $editorConfigsOut | Out-Null
 
 Get-ChildItem (Join-Path $root "docs") -File | Where-Object { $_.Extension -eq ".md" } |
   Copy-Item -Destination $docsOut
@@ -115,6 +117,9 @@ if (Test-Path (Join-Path $root "vscode-extension\\linescript-vscode")) {
   if (Test-Path $extNodeModules) {
     Remove-Item -Recurse -Force $extNodeModules
   }
+}
+if (Test-Path (Join-Path $root "editor-configs")) {
+  Copy-Item (Join-Path $root "editor-configs\\*") $editorConfigsOut -Recurse
 }
 
 Compress-Archive -Path "$bundleDir\\*" -DestinationPath $zipPath

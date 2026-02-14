@@ -1,0 +1,19 @@
+{
+  "languageserver": {
+    "linescript": {
+      "command": "node",
+      "args": ["vscode-extension/linescript-vscode/server/server.js"],
+      "filetypes": ["linescript"],
+      "rootPatterns": [".git", "README.md", "lsc.cpp", "src/lsc.cpp"],
+      "settings": {
+        "linescript.lscPath": "lsc.exe",
+        "linescript.backendCompiler": "clang",
+        "linescript.checkOnType": true,
+        "linescript.checkOnSave": true,
+        "linescript.checkTimeoutMs": 8000,
+        "linescript.hintsEnabled": true,
+        "linescript.maxHintsPerFile": 120
+      }
+    }
+  }
+}

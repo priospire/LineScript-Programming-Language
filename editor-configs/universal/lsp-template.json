@@ -1,0 +1,21 @@
+{
+  "languageId": "linescript",
+  "fileExtensions": [".lsc", ".ls"],
+  "server": {
+    "command": "node",
+    "args": ["${workspaceFolder}/vscode-extension/linescript-vscode/server/server.js"]
+  },
+  "workspaceSettings": {
+    "linescript.lscPath": "${workspaceFolder}/lsc.exe",
+    "linescript.backendCompiler": "clang",
+    "linescript.checkOnType": true,
+    "linescript.checkOnSave": true,
+    "linescript.checkTimeoutMs": 8000,
+    "linescript.hintsEnabled": true,
+    "linescript.maxHintsPerFile": 120
+  },
+  "run": {
+    "windows": "${workspaceFolder}/linescript.cmd ${file} -O4 --cc clang",
+    "linux_macos": "${workspaceFolder}/linescript.sh ${file} -O4 --cc clang"
+  }
+}

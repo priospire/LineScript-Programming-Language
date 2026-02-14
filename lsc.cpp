@@ -126,6 +126,78 @@ enum class TokenKind {
   Gte,
 };
 
+static const char *tokenKindName(TokenKind k) {
+  switch (k) {
+  case TokenKind::End: return "End";
+  case TokenKind::Newline: return "Newline";
+  case TokenKind::Id: return "Id";
+  case TokenKind::Str: return "Str";
+  case TokenKind::Int: return "Int";
+  case TokenKind::Float: return "Float";
+  case TokenKind::KwFn: return "KwFn";
+  case TokenKind::KwInline: return "KwInline";
+  case TokenKind::KwExtern: return "KwExtern";
+  case TokenKind::KwLet: return "KwLet";
+  case TokenKind::KwVar: return "KwVar";
+  case TokenKind::KwConst: return "KwConst";
+  case TokenKind::KwDeclare: return "KwDeclare";
+  case TokenKind::KwOwned: return "KwOwned";
+  case TokenKind::KwReturn: return "KwReturn";
+  case TokenKind::KwIf: return "KwIf";
+  case TokenKind::KwUnless: return "KwUnless";
+  case TokenKind::KwElif: return "KwElif";
+  case TokenKind::KwElse: return "KwElse";
+  case TokenKind::KwWhile: return "KwWhile";
+  case TokenKind::KwFor: return "KwFor";
+  case TokenKind::KwParallel: return "KwParallel";
+  case TokenKind::KwClass: return "KwClass";
+  case TokenKind::KwIn: return "KwIn";
+  case TokenKind::KwStep: return "KwStep";
+  case TokenKind::KwDo: return "KwDo";
+  case TokenKind::KwEnd: return "KwEnd";
+  case TokenKind::KwThrows: return "KwThrows";
+  case TokenKind::KwBreak: return "KwBreak";
+  case TokenKind::KwContinue: return "KwContinue";
+  case TokenKind::KwTrue: return "KwTrue";
+  case TokenKind::KwFalse: return "KwFalse";
+  case TokenKind::Arrow: return "Arrow";
+  case TokenKind::Dot: return "Dot";
+  case TokenKind::DotDot: return "DotDot";
+  case TokenKind::Pow: return "Pow";
+  case TokenKind::PlusPlus: return "PlusPlus";
+  case TokenKind::MinusMinus: return "MinusMinus";
+  case TokenKind::Colon: return "Colon";
+  case TokenKind::Semi: return "Semi";
+  case TokenKind::Comma: return "Comma";
+  case TokenKind::LPar: return "LPar";
+  case TokenKind::RPar: return "RPar";
+  case TokenKind::LBra: return "LBra";
+  case TokenKind::RBra: return "RBra";
+  case TokenKind::Plus: return "Plus";
+  case TokenKind::Minus: return "Minus";
+  case TokenKind::Star: return "Star";
+  case TokenKind::Slash: return "Slash";
+  case TokenKind::Percent: return "Percent";
+  case TokenKind::PlusAssign: return "PlusAssign";
+  case TokenKind::MinusAssign: return "MinusAssign";
+  case TokenKind::StarAssign: return "StarAssign";
+  case TokenKind::SlashAssign: return "SlashAssign";
+  case TokenKind::PercentAssign: return "PercentAssign";
+  case TokenKind::PowAssign: return "PowAssign";
+  case TokenKind::Assign: return "Assign";
+  case TokenKind::Eq: return "Eq";
+  case TokenKind::Neq: return "Neq";
+  case TokenKind::AndAnd: return "AndAnd";
+  case TokenKind::OrOr: return "OrOr";
+  case TokenKind::Bang: return "Bang";
+  case TokenKind::Lt: return "Lt";
+  case TokenKind::Lte: return "Lte";
+  case TokenKind::Gt: return "Gt";
+  case TokenKind::Gte: return "Gte";
+  }
+  return "Unknown";
+}
+
 struct Token {
   TokenKind kind = TokenKind::End;
   std::string text;
@@ -1888,7 +1960,12 @@ private:
   }
 
   void req(bool ok, const Span &s, const std::string &m) {
-    if (!ok) throw CompileError(s, m);
+    if (ok) return;
+    if (superuserMode_) {
+      warn(s, "superuser mode: " + m + " (continuing)");
+      return;
+    }
+    throw CompileError(s, m);
   }
   void warn(const Span &s, const std::string &m) {
     std::ostringstream o;
@@ -1898,7 +1975,13 @@ private:
 
   void addSig(const std::string &name, const std::vector<Type> &params, Type ret, const Span &s,
               std::vector<std::string> throws = {}) {
-    if (sig_.count(name)) throw CompileError(s, "duplicate function '" + name + "'");
+    if (sig_.count(name)) {
+      if (superuserMode_) {
+        warn(s, "superuser mode: duplicate function '" + name + "' (latest signature wins)");
+      } else {
+        throw CompileError(s, "duplicate function '" + name + "'");
+      }
+    }
     Sig sg;
     sg.p = params;
     sg.r = ret;
@@ -2202,7 +2285,13 @@ private:
     throwsAllowed.reserve(f.throws.size());
     for (const std::string &e : f.throws) throwsAllowed.insert(e);
     for (const Param &p : f.p) {
-      if (l.count(p.n)) throw CompileError(f.s, "duplicate parameter '" + p.n + "'");
+      if (l.count(p.n)) {
+        if (superuserMode_) {
+          warn(f.s, "superuser mode: duplicate parameter '" + p.n + "' (latest declaration wins)");
+        } else {
+          throw CompileError(f.s, "duplicate parameter '" + p.n + "'");
+        }
+      }
       l[p.n] = Local{p.t, false, false, ""};
     }
     block(f.b, l, f.ret, 0, throwsAllowed);
@@ -2275,7 +2364,7 @@ private:
         const auto &rv = static_cast<const EVar &>(*n.v);
         auto it = l.find(rv.n);
         if (it != l.end() && it->second.isOwned) {
-          throw CompileError(s.s, "cannot return owned handle variable '" + rv.n + "'");
+          req(false, s.s, "cannot return owned handle variable '" + rv.n + "'");
         }
       }
       Type vt = expr(*n.v, l, throwsAllowed);
@@ -2362,6 +2451,20 @@ private:
       e.typed = true;
       return t;
     };
+    auto failType = [&](const Span &s, const std::string &m, Type fallback) -> Type {
+      if (superuserMode_) {
+        warn(s, "superuser mode: " + m + " (continuing)");
+        return mark(fallback);
+      }
+      throw CompileError(s, m);
+    };
+    auto failVoid = [&](const Span &s, const std::string &m) {
+      if (superuserMode_) {
+        warn(s, "superuser mode: " + m + " (continuing)");
+        return;
+      }
+      throw CompileError(s, m);
+    };
     switch (e.k) {
     case EK::Int: return mark(Type::I64);
     case EK::Float: return mark(Type::F64);
@@ -2370,17 +2473,17 @@ private:
     case EK::Var: {
       auto &n = static_cast<EVar &>(e);
       auto it = l.find(n.n);
-      if (it == l.end()) throw CompileError(e.s, "unknown variable '" + n.n + "'");
+      if (it == l.end()) return failType(e.s, "unknown variable '" + n.n + "'", Type::I64);
       return mark(it->second.t);
     }
     case EK::Unary: {
       auto &n = static_cast<EUnary &>(e);
       Type t = expr(*n.x, l, throwsAllowed);
       if (n.op == UK::Neg) {
-        if (!isNum(t)) throw CompileError(e.s, "unary '-' requires numeric");
+        if (!isNum(t)) return failType(e.s, "unary '-' requires numeric", Type::I64);
         return mark(t);
       }
-      if (t != Type::Bool) throw CompileError(e.s, "unary '!' requires bool");
+      if (t != Type::Bool) return failType(e.s, "unary '!' requires bool", Type::Bool);
       return mark(Type::Bool);
     }
     case EK::Binary: {
@@ -2390,10 +2493,10 @@ private:
       case BK::Add:
       case BK::Sub:
       case BK::Mul:
-        if (!isNum(a) || !isNum(b)) throw CompileError(e.s, "arithmetic requires numeric");
+        if (!isNum(a) || !isNum(b)) return failType(e.s, "arithmetic requires numeric", Type::I64);
         return mark(promote(a, b));
       case BK::Div:
-        if (!isNum(a) || !isNum(b)) throw CompileError(e.s, "arithmetic requires numeric");
+        if (!isNum(a) || !isNum(b)) return failType(e.s, "arithmetic requires numeric", Type::I64);
         if (isLiteralZero(*n.r)) {
           if (superuserMode_) {
             warn(n.r->s, "superuser mode: allowing division by zero expression");
@@ -2403,7 +2506,7 @@ private:
         }
         return mark(promote(a, b));
       case BK::Mod:
-        if (!isInt(a) || !isInt(b)) throw CompileError(e.s, "'%' requires integer operands");
+        if (!isInt(a) || !isInt(b)) return failType(e.s, "'%' requires integer operands", Type::I64);
         if (isLiteralZero(*n.r)) {
           if (superuserMode_) {
             warn(n.r->s, "superuser mode: allowing modulo by zero expression");
@@ -2413,28 +2516,28 @@ private:
         }
         return mark(promote(a, b));
       case BK::Pow:
-        if (!isNum(a) || !isNum(b)) throw CompileError(e.s, "power operator requires numeric");
+        if (!isNum(a) || !isNum(b)) return failType(e.s, "power operator requires numeric", Type::I64);
         return mark(promote(a, b));
       case BK::Lt:
       case BK::Lte:
       case BK::Gt:
       case BK::Gte:
-        if (!isNum(a) || !isNum(b)) throw CompileError(e.s, "comparison requires numeric");
+        if (!isNum(a) || !isNum(b)) return failType(e.s, "comparison requires numeric", Type::Bool);
         return mark(Type::Bool);
       case BK::And:
       case BK::Or:
-        if (a != Type::Bool || b != Type::Bool) throw CompileError(e.s, "logical operators require bool");
+        if (a != Type::Bool || b != Type::Bool) return failType(e.s, "logical operators require bool", Type::Bool);
         return mark(Type::Bool);
       case BK::Eq:
       case BK::Neq:
         if ((a == b) || (isNum(a) && isNum(b))) return mark(Type::Bool);
-        throw CompileError(e.s, "cannot compare '" + typeName(a) + "' with '" + typeName(b) + "'");
+        return failType(e.s, "cannot compare '" + typeName(a) + "' with '" + typeName(b) + "'", Type::Bool);
       }
     }
     case EK::Call: {
       auto &n = static_cast<ECall &>(e);
       if (n.f == "superuser") {
-        if (!n.a.empty()) throw CompileError(e.s, "function 'superuser' expects 0 args");
+        if (!n.a.empty()) failVoid(e.s, "function 'superuser' expects 0 args");
         return mark(Type::Void);
       }
       if (n.f.rfind("su.", 0) == 0 && !superuserMode_) {
@@ -2445,116 +2548,130 @@ private:
         if (n.a.size() == 1) {
           Type at = expr(*n.a[0], l, throwsAllowed);
           if (at != Type::Str) {
-            throw CompileError(n.a[0]->s, "arg 1 cannot convert '" + typeName(at) + "' to 'str'");
+            failVoid(n.a[0]->s, "arg 1 cannot convert '" + typeName(at) + "' to 'str'");
           }
           return mark(Type::Str);
         }
-        throw CompileError(e.s, "function 'input' expects 0 or 1 args");
+        failVoid(e.s, "function 'input' expects 0 or 1 args");
+        return mark(Type::Str);
       }
       if (n.f == "input_i64") {
         if (n.a.empty()) return mark(Type::I64);
         if (n.a.size() == 1) {
           Type at = expr(*n.a[0], l, throwsAllowed);
           if (at != Type::Str) {
-            throw CompileError(n.a[0]->s, "arg 1 cannot convert '" + typeName(at) + "' to 'str'");
+            failVoid(n.a[0]->s, "arg 1 cannot convert '" + typeName(at) + "' to 'str'");
           }
           return mark(Type::I64);
         }
-        throw CompileError(e.s, "function 'input_i64' expects 0 or 1 args");
+        failVoid(e.s, "function 'input_i64' expects 0 or 1 args");
+        return mark(Type::I64);
       }
       if (n.f == "input_f64") {
         if (n.a.empty()) return mark(Type::F64);
         if (n.a.size() == 1) {
           Type at = expr(*n.a[0], l, throwsAllowed);
           if (at != Type::Str) {
-            throw CompileError(n.a[0]->s, "arg 1 cannot convert '" + typeName(at) + "' to 'str'");
+            failVoid(n.a[0]->s, "arg 1 cannot convert '" + typeName(at) + "' to 'str'");
           }
           return mark(Type::F64);
         }
-        throw CompileError(e.s, "function 'input_f64' expects 0 or 1 args");
+        failVoid(e.s, "function 'input_f64' expects 0 or 1 args");
+        return mark(Type::F64);
       }
       if (n.f == "print" || n.f == "println") {
         if (n.a.size() != 1) {
-          throw CompileError(e.s, "function '" + n.f + "' expects 1 arg");
+          failVoid(e.s, "function '" + n.f + "' expects 1 arg");
+          return mark(Type::Void);
         }
         Type at = expr(*n.a[0], l, throwsAllowed);
         if (!isPrintable(at)) {
-          throw CompileError(n.a[0]->s, "arg 1 cannot print type '" + typeName(at) + "'");
+          failVoid(n.a[0]->s, "arg 1 cannot print type '" + typeName(at) + "'");
         }
         return mark(Type::Void);
       }
       if (n.f == "formatOutput" || n.f == "FormatOutput") {
         if (n.a.size() != 1) {
-          throw CompileError(e.s, "function '" + n.f + "' expects 1 arg");
+          failVoid(e.s, "function '" + n.f + "' expects 1 arg");
+          return mark(Type::Str);
         }
         Type at = expr(*n.a[0], l, throwsAllowed);
         if (!isPrintable(at)) {
-          throw CompileError(n.a[0]->s, "arg 1 cannot format type '" + typeName(at) + "'");
+          failVoid(n.a[0]->s, "arg 1 cannot format type '" + typeName(at) + "'");
         }
         return mark(Type::Str);
       }
       if (n.f == "max" || n.f == "min") {
         if (n.a.size() != 2) {
-          throw CompileError(e.s, "function '" + n.f + "' expects 2 args");
+          failVoid(e.s, "function '" + n.f + "' expects 2 args");
+          return mark(Type::I64);
         }
         Type a0 = expr(*n.a[0], l, throwsAllowed);
         Type a1 = expr(*n.a[1], l, throwsAllowed);
         if (!isNum(a0) || !isNum(a1)) {
-          throw CompileError(e.s, "function '" + n.f + "' requires numeric args");
+          failVoid(e.s, "function '" + n.f + "' requires numeric args");
+          return mark(Type::I64);
         }
         return mark(promote(a0, a1));
       }
       if (n.f == "abs") {
         if (n.a.size() != 1) {
-          throw CompileError(e.s, "function '" + n.f + "' expects 1 arg");
+          failVoid(e.s, "function '" + n.f + "' expects 1 arg");
+          return mark(Type::I64);
         }
         Type a0 = expr(*n.a[0], l, throwsAllowed);
         if (!isNum(a0)) {
-          throw CompileError(e.s, "function '" + n.f + "' requires numeric args");
+          failVoid(e.s, "function '" + n.f + "' requires numeric args");
+          return mark(Type::I64);
         }
         return mark(a0);
       }
       if (n.f == "clamp") {
         if (n.a.size() != 3) {
-          throw CompileError(e.s, "function '" + n.f + "' expects 3 args");
+          failVoid(e.s, "function '" + n.f + "' expects 3 args");
+          return mark(Type::I64);
         }
         Type a0 = expr(*n.a[0], l, throwsAllowed);
         Type a1 = expr(*n.a[1], l, throwsAllowed);
         Type a2 = expr(*n.a[2], l, throwsAllowed);
         if (!isNum(a0) || !isNum(a1) || !isNum(a2)) {
-          throw CompileError(e.s, "function '" + n.f + "' requires numeric args");
+          failVoid(e.s, "function '" + n.f + "' requires numeric args");
+          return mark(Type::I64);
         }
         return mark(promote(promote(a0, a1), a2));
       }
       if (n.f == ".format") {
-        if (!n.a.empty()) throw CompileError(e.s, "function '" + n.f + "' expects 0 args");
+        if (!n.a.empty()) failVoid(e.s, "function '" + n.f + "' expects 0 args");
         return mark(Type::Void);
       }
       if (n.f == "spawn") {
         if (n.a.size() != 1) {
-          throw CompileError(e.s, "function 'spawn' expects 1 arg");
+          failVoid(e.s, "function 'spawn' expects 1 arg");
+          return mark(Type::I64);
         }
         if (n.a[0]->k != EK::Call) {
-          throw CompileError(n.a[0]->s, "spawn expects a function call like spawn(worker())");
+          failVoid(n.a[0]->s, "spawn expects a function call like spawn(worker())");
+          return mark(Type::I64);
         }
         auto &target = static_cast<ECall &>(*n.a[0]);
         auto itTarget = sig_.find(target.f);
         if (itTarget == sig_.end()) {
-          throw CompileError(target.s, "unknown function '" + target.f + "'");
+          failVoid(target.s, "unknown function '" + target.f + "'");
+          return mark(Type::I64);
         }
         if (!target.a.empty()) {
-          throw CompileError(target.s, "spawn target must not take arguments");
+          failVoid(target.s, "spawn target must not take arguments");
         }
         if (!itTarget->second.p.empty()) {
-          throw CompileError(target.s, "spawn target must have zero parameters");
+          failVoid(target.s, "spawn target must have zero parameters");
         }
         if (itTarget->second.r != Type::Void) {
-          throw CompileError(target.s, "spawn target must return void");
+          failVoid(target.s, "spawn target must return void");
         }
         return mark(Type::I64);
       }
       auto it = sig_.find(n.f);
-      if (it == sig_.end()) throw CompileError(e.s, "unknown function '" + n.f + "'");
+      if (it == sig_.end()) return failType(e.s, "unknown function '" + n.f + "'", Type::I64);
       const Sig &sg = it->second;
       for (const std::string &errName : sg.throws) {
         if (!throwsAllowed.count(errName)) {
@@ -2566,18 +2683,20 @@ private:
           }
         }
       }
-      if (sg.p.size() != n.a.size())
-        throw CompileError(e.s, "function '" + n.f + "' expects " + std::to_string(sg.p.size()) + " args");
+      if (sg.p.size() != n.a.size()) {
+        failVoid(e.s, "function '" + n.f + "' expects " + std::to_string(sg.p.size()) + " args");
+      }
       for (std::size_t i = 0; i < n.a.size(); ++i) {
+        if (i >= sg.p.size()) break;
         Type at = expr(*n.a[i], l, throwsAllowed), pt = sg.p[i];
         if (!can(at, pt))
-          throw CompileError(n.a[i]->s, "arg " + std::to_string(i + 1) + " cannot convert '" + typeName(at) +
-                                          "' to '" + typeName(pt) + "'");
+          failVoid(n.a[i]->s, "arg " + std::to_string(i + 1) + " cannot convert '" + typeName(at) +
+                                 "' to '" + typeName(pt) + "'");
       }
       return mark(sg.r);
     }
     }
-    throw CompileError(e.s, "internal type error");
+    return failType(e.s, "internal type error", Type::I64);
   }
 };
 
@@ -4809,8 +4928,9 @@ static void optimize(Program &p, int passes) {
 class EmitC {
 public:
   EmitC(const Program &p, std::unordered_set<std::string> inl, bool superuserMode = false,
+        bool superuserStartEnabled = false,
         std::vector<std::string> activeCliFlags = {})
-      : p_(p), inl_(std::move(inl)), superuserMode_(superuserMode) {
+      : p_(p), inl_(std::move(inl)), superuserMode_(superuserMode), superuserStartEnabled_(superuserStartEnabled) {
     std::unordered_map<std::string, std::string> flagSymbols;
     for (const Fn &f : p_.f) {
       if (!f.isCliFlag) continue;
@@ -4910,7 +5030,7 @@ public:
     o_ << "#include <pthread.h>\n\n";
 #endif
     o_ << "typedef uint8_t ls_bool;\n\n";
-    o_ << "static ls_bool ls_su_enabled = 0;\n";
+    o_ << "static ls_bool ls_su_enabled = " << (superuserStartEnabled_ ? "1" : "0") << ";\n";
     o_ << "static ls_bool ls_su_trace = 0;\n";
     o_ << "static int64_t ls_su_step_limit = 0;\n";
     o_ << "static int64_t ls_su_step_count = 0;\n";
@@ -4982,6 +5102,7 @@ private:
   bool needsFormatOutputRuntime_ = false;
   bool needsHttpRuntime_ = false;
   bool superuserMode_ = false;
+  bool superuserStartEnabled_ = false;
   bool superuserDebugToStderr_ = false;
   bool superuserIrDumpRequested_ = false;
   std::vector<std::string> activeCliFlagCalls_;
@@ -8588,6 +8709,12 @@ private:
 #endif
     o_ << "}\n";
     o_ << "static inline void superuser(void) {\n";
+    o_ << "  if (ls_su_enabled) {\n";
+    o_ << "    ls_su_enabled = 0;\n";
+    o_ << "    ls_su_trace = 0;\n";
+    o_ << "    ls_su_emit_debug(\"[superuser] developer privileges disabled\\n\");\n";
+    o_ << "    return;\n";
+    o_ << "  }\n";
     o_ << "  ls_su_enabled = 1;\n";
     o_ << "  ls_su_emit_debug(\"[superuser] developer privileges enabled\\n\");\n";
     o_ << "}\n";
@@ -9607,12 +9734,17 @@ static void writeFile(const std::filesystem::path &p, const std::string &c) {
 
 static bool gSuperuserVerbose = false;
 static bool gSuperuserDebugToStderr = false;
-static void setSuperuserLogging(bool enabled, bool debugToStderr) {
+static int gSuperuserVerbosity = 3;
+static void setSuperuserLogging(bool enabled, bool debugToStderr, int verbosity = 3) {
   gSuperuserVerbose = enabled;
   gSuperuserDebugToStderr = debugToStderr;
+  if (verbosity < 1) verbosity = 1;
+  if (verbosity > 5) verbosity = 5;
+  gSuperuserVerbosity = verbosity;
 }
-static void superuserLog(const std::string &msg) {
+static void superuserLogV(int level, const std::string &msg) {
   if (!gSuperuserVerbose) return;
+  if (level > gSuperuserVerbosity) return;
   std::ostream &os = gSuperuserDebugToStderr ? std::cerr : std::cout;
   os << "[superuser] " << msg << '\n';
   os.flush();
@@ -9621,7 +9753,6 @@ static void superuserLog(const std::string &msg) {
   OutputDebugStringA(line.c_str());
 #endif
 }
-
 struct Opt {
   std::vector<std::filesystem::path> inputs;
   std::filesystem::path out;
@@ -9631,6 +9762,8 @@ struct Opt {
   bool run = false;
   bool check = false;
   bool repl = false;
+  bool superuserSession = false;
+  int superuserVerbosity = 3;
   bool keepC = false;
   bool maxSpeed = false;
   int passes = 12;
@@ -9753,6 +9886,14 @@ static Opt parseOpt(int argc, char **argv) {
       std::exit(0);
     } else if (a == "--repl" || a == "--shell") {
       o.repl = true;
+    } else if (a == "--su-session") {
+      o.superuserSession = true;
+    } else if (a == "--su-verbosity") {
+      if (i + 1 >= argc) throw std::runtime_error("missing value for --su-verbosity");
+      o.superuserVerbosity = std::stoi(argv[++i]);
+      if (o.superuserVerbosity < 1 || o.superuserVerbosity > 5) {
+        throw std::runtime_error("--su-verbosity must be in range 1..5");
+      }
     } else if (a == "--LineScript") {
       o.infoMessages.push_back("LineScript version " + lineScriptVersionDisplay());
       o.cliFlags.push_back(a);
@@ -9816,6 +9957,12 @@ static Opt parseOpt(int argc, char **argv) {
   }
   if (o.repl && (o.check || o.build || o.run)) {
     throw std::runtime_error("--repl/--shell cannot be combined with --check/--build/--run");
+  }
+  if (o.repl && o.superuserSession) {
+    throw std::runtime_error("--su-session is internal and cannot be combined with --repl/--shell");
+  }
+  if (!o.superuserSession) {
+    o.superuserVerbosity = 3;
   }
   if (o.inputs.empty() && !o.repl) {
     if (!o.infoMessages.empty() && !o.check && !o.build && !o.run) {
@@ -9977,6 +10124,94 @@ static bool replContainsSuperuser(const std::string &snippet) {
   return lowerCopy(snippet).find("superuser(") != std::string::npos;
 }
 
+static bool replIsSuperuserToggleCommand(const std::string &snippet) {
+  std::string t = trimCopy(snippet);
+  if (!t.empty() && t.back() == ';') t.pop_back();
+  return lowerCopy(trimCopy(t)) == "superuser()";
+}
+
+static bool replParseVerbosityCommand(const std::string &snippet, int &levelOut) {
+  std::string t = lowerCopy(trimCopy(snippet));
+  if (!t.empty() && t.back() == ';') t.pop_back();
+  constexpr const char *kPrefix = "su.verbosity.";
+  if (t.rfind(kPrefix, 0) != 0) return false;
+  const std::string tail = t.substr(std::char_traits<char>::length(kPrefix));
+  if (tail.size() != 1 || tail[0] < '1' || tail[0] > '5') return false;
+  levelOut = tail[0] - '0';
+  return true;
+}
+
+static bool replIsIdentStart(char c) {
+  const unsigned char u = static_cast<unsigned char>(c);
+  return std::isalpha(u) || c == '_';
+}
+
+static bool replIsIdentChar(char c) {
+  const unsigned char u = static_cast<unsigned char>(c);
+  return std::isalnum(u) || c == '_';
+}
+
+static std::string replRewritePrintAsPrintln(const std::string &snippet) {
+  std::string out;
+  out.reserve(snippet.size() + 16);
+  std::size_t i = 0;
+  const std::size_t n = snippet.size();
+  bool inStr = false;
+  bool esc = false;
+  while (i < n) {
+    const char c = snippet[i];
+    if (inStr) {
+      out.push_back(c);
+      if (esc) {
+        esc = false;
+      } else if (c == '\\') {
+        esc = true;
+      } else if (c == '"') {
+        inStr = false;
+      }
+      ++i;
+      continue;
+    }
+    if (c == '/' && i + 1 < n && snippet[i + 1] == '/') {
+      while (i < n) {
+        out.push_back(snippet[i]);
+        if (snippet[i] == '\n') {
+          ++i;
+          break;
+        }
+        ++i;
+      }
+      continue;
+    }
+    if (c == '"') {
+      out.push_back(c);
+      inStr = true;
+      ++i;
+      continue;
+    }
+    if (replIsIdentStart(c)) {
+      std::size_t j = i + 1;
+      while (j < n && replIsIdentChar(snippet[j])) ++j;
+      const std::string tok = snippet.substr(i, j - i);
+      if (tok == "print") {
+        std::size_t k = j;
+        while (k < n && (snippet[k] == ' ' || snippet[k] == '\t' || snippet[k] == '\r')) ++k;
+        if (k < n && snippet[k] == '(') {
+          out += "println";
+          i = j;
+          continue;
+        }
+      }
+      out += tok;
+      i = j;
+      continue;
+    }
+    out.push_back(c);
+    ++i;
+  }
+  return out;
+}
+
 static std::string replUserName() {
 #if defined(_WIN32)
   char *buf = nullptr;
@@ -10027,7 +10262,8 @@ static int runRepl(const Opt &o, const std::string &argv0) {
   std::string pending;
   int depth = 0;
   const std::string baseUser = replUserName();
-  bool superuserPrompt = false;
+  bool superuserSession = false;
+  int superuserVerbosity = 3;
 
   std::cout << "LineScript shell " << lineScriptVersionDisplay() << '\n';
   std::cout << "Type :help for commands, :exit to quit.\n";
@@ -10035,7 +10271,7 @@ static int runRepl(const Opt &o, const std::string &argv0) {
 
   auto renderPrompt = [&]() {
     if (depth > 0) return std::string("... ");
-    const std::string who = superuserPrompt ? "superuser" : baseUser;
+    const std::string who = superuserSession ? "superuser" : baseUser;
     return who + "@LineScript> ";
   };
 
@@ -10056,6 +10292,8 @@ static int runRepl(const Opt &o, const std::string &argv0) {
         std::cout << "  :help   show this help\n";
         std::cout << "  :reset  clear interactive session state\n";
         std::cout << "  :whoami print current shell identity\n";
+        std::cout << "  su.verbosity.<1-5>  set superuser verbosity (requires superuser mode)\n";
+        std::cout << "  su.help  show privileged superuser commands (requires superuser mode)\n";
         std::cout << "  :exit   quit shell\n";
         continue;
       }
@@ -10063,12 +10301,37 @@ static int runRepl(const Opt &o, const std::string &argv0) {
         persisted.clear();
         pending.clear();
         depth = 0;
-        superuserPrompt = false;
+        superuserSession = false;
         std::cout << "Session reset.\n";
         continue;
       }
       if (t == ":whoami") {
-        std::cout << (superuserPrompt ? "superuser" : baseUser) << '\n';
+        std::cout << (superuserSession ? "superuser" : baseUser) << '\n';
+        continue;
+      }
+      if (lowerCopy(t) == "su.help") {
+        if (!superuserSession) {
+          std::cerr << "Not privileged: enable superuser() first\n";
+        } else {
+          std::cout << "superuser REPL commands:\n";
+          std::cout << "  superuser()          toggle superuser mode on/off\n";
+          std::cout << "  su.verbosity.1..5    set compiler/runtime log detail\n";
+          std::cout << "  su.help              show this privileged help\n";
+          std::cout << "superuser language APIs:\n";
+          std::cout << "  su.trace.on(), su.trace.off()\n";
+          std::cout << "  su.capabilities(), su.memory.inspect(), su.compiler.inspect()\n";
+          std::cout << "  su.limit.set(step_limit, mem_limit), su.ir.dump(), su.debug.hook(tag)\n";
+        }
+        continue;
+      }
+      int requestedVerbosity = 0;
+      if (replParseVerbosityCommand(t, requestedVerbosity)) {
+        if (!superuserSession) {
+          std::cerr << "Not privileged: enable superuser() first\n";
+        } else {
+          superuserVerbosity = requestedVerbosity;
+          std::cerr << "[superuser][repl] verbosity set to " << superuserVerbosity << "\n";
+        }
         continue;
       }
     }
@@ -10087,6 +10350,19 @@ static int runRepl(const Opt &o, const std::string &argv0) {
     const std::string snippet = trimCopy(pending);
     pending.clear();
     if (snippet.empty()) continue;
+    if (replIsSuperuserToggleCommand(snippet)) {
+      superuserSession = !superuserSession;
+      if (superuserSession) {
+        superuserVerbosity = 3;
+        std::cerr << "Warning: superuser() enabled. LineScript safety checks are relaxed for developer diagnostics.\n";
+        std::cerr << "[superuser][repl] session enabled\n";
+      } else {
+        std::cerr << "[superuser][repl] session disabled; back to normal user\n";
+      }
+      continue;
+    }
+    const bool hasSuperuser = replContainsSuperuser(snippet);
+    const std::string replSnippet = replRewritePrintAsPrintln(snippet);
 
     std::ostringstream src;
     src << ".format()\n";
@@ -10095,20 +10371,28 @@ static int runRepl(const Opt &o, const std::string &argv0) {
       src << s;
       if (s.empty() || s.back() != '\n') src << '\n';
     }
-    src << snippet << '\n';
+    src << replSnippet << '\n';
     writeFile(replSrc, src.str());
 
     std::ostringstream cmd;
     cmd << qCmd(argv0) << " " << q(replSrc) << " --run --cc " << qCmd(o.cc) << " --backend " << o.backend
         << " --passes " << o.passes << " -o " << q(replBin);
     if (o.maxSpeed) cmd << " -O4";
+    if (superuserSession) cmd << " --su-session --su-verbosity " << superuserVerbosity;
+
+    if (superuserSession && superuserVerbosity >= 5) {
+      std::cerr << "[superuser][repl] snippet:\n" << replSnippet << "\n";
+    }
+    if (superuserSession && superuserVerbosity >= 4) {
+      std::cerr << "[superuser][repl] command: " << cmd.str() << "\n";
+    }
 
     const int rc = std::system(cmd.str().c_str());
     if (rc == 0) {
-      if (replShouldPersist(snippet)) {
+      if (!hasSuperuser && replShouldPersist(snippet)) {
         persisted.push_back(snippet);
       }
-      if (replContainsSuperuser(snippet)) superuserPrompt = true;
+      if (hasSuperuser) superuserSession = true;
     } else {
       std::cerr << "REPL: command failed; session state unchanged.\n";
     }
@@ -10136,13 +10420,13 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   if (!o.build) {
     auto out = o.out.empty() ? std::filesystem::path(primaryIn).replace_extension(".c") : o.out;
     validatePathForShell(out, "output path");
-    if (superuserMode) superuserLog("emit-only mode: writing C output to " + out.string());
+    if (superuserMode) superuserLogV(2, "emit-only mode: writing C output to " + out.string());
     writeFile(out, cCode);
     if (superuserMode && superuserIrDump) {
       auto irOut = std::filesystem::path(primaryIn).replace_extension(".ir.c");
       validatePathForShell(irOut, "superuser IR dump path");
       writeFile(irOut, cCode);
-      superuserLog("superuser IR dump written to " + irOut.string());
+      superuserLogV(3, "superuser IR dump written to " + irOut.string());
     }
     if (!cleanOutputMode) std::cout << "Emitted C: " << out << '\n';
     return 0;
@@ -10165,15 +10449,15 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   validatePathForShell(c, "generated C path");
   validatePathForShell(bin, "output binary path");
   if (superuserMode) {
-    superuserLog("build mode: generating C at " + c.string());
-    superuserLog("target binary: " + bin.string());
+    superuserLogV(2, "build mode: generating C at " + c.string());
+    superuserLogV(2, "target binary: " + bin.string());
   }
   writeFile(c, cCode);
   if (superuserMode && superuserIrDump) {
     auto irOut = std::filesystem::path(primaryIn).replace_extension(".ir.c");
     validatePathForShell(irOut, "superuser IR dump path");
     writeFile(irOut, cCode);
-    superuserLog("superuser IR dump written to " + irOut.string());
+    superuserLogV(3, "superuser IR dump written to " + irOut.string());
   }
   const std::string ccNorm = lowerCopy(stripOuterQuotes(o.cc));
   const bool clangLike = ccNorm.find("clang") != std::string::npos;
@@ -10309,32 +10593,35 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
       const std::string asmFlags = flagsForAsmEmit(flags);
       const std::string asmLinkFlags = flagsForAsmLink(flags);
       if (superuserMode) {
-        superuserLog("trying ASM emit flags: " + asmFlags);
+        superuserLogV(3, "trying ASM emit flags: " + asmFlags);
       }
       std::ostringstream asmEmit;
       asmEmit << qCmd(o.cc) << " " << asmFlags << " -fno-lto -S -masm=intel " << q(c) << " -o " << q(asmTmp);
+      if (superuserMode) superuserLogV(4, "exec (asm emit): " + asmEmit.str());
       rc = std::system(asmEmit.str().c_str());
       if (rc == 0) {
-        if (superuserMode) superuserLog("ASM emit succeeded; linking ASM backend");
+        if (superuserMode) superuserLogV(3, "ASM emit succeeded; linking ASM backend");
         std::ostringstream asmLink;
         asmLink << qCmd(o.cc) << " " << asmLinkFlags << " " << q(asmTmp) << " -o " << q(bin) << linkSuffix;
+        if (superuserMode) superuserLogV(4, "exec (asm link): " + asmLink.str());
         rc = std::system(asmLink.str().c_str());
         if (rc == 0) {
           usedFlags = flags;
           usedBackend = "asm";
-          if (superuserMode) superuserLog("ASM backend selected");
+          if (superuserMode) superuserLogV(2, "ASM backend selected");
           break;
         }
       }
       for (const std::string &cppCmdName : cppFallbackCommands) {
-        if (superuserMode) superuserLog("ASM path failed; trying C++ fallback compiler: " + cppCmdName);
+        if (superuserMode) superuserLogV(2, "ASM path failed; trying C++ fallback compiler: " + cppCmdName);
         std::ostringstream cppCmd;
         cppCmd << qCmd(cppCmdName) << " " << flags << " " << q(c) << " -o " << q(bin) << linkSuffix;
+        if (superuserMode) superuserLogV(4, "exec (cpp fallback): " + cppCmd.str());
         rc = std::system(cppCmd.str().c_str());
         if (rc == 0) {
           usedFlags = flags;
           usedBackend = "cpp-fallback";
-          if (superuserMode) superuserLog("C++ fallback backend selected: " + cppCmdName);
+          if (superuserMode) superuserLogV(2, "C++ fallback backend selected: " + cppCmdName);
           break;
         }
       }
@@ -10342,12 +10629,13 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
     }
     std::ostringstream cmd;
     cmd << qCmd(o.cc) << " " << flags << " " << q(c) << " -o " << q(bin) << linkSuffix;
-    if (superuserMode) superuserLog("trying C backend flags: " + flags);
+    if (superuserMode) superuserLogV(3, "trying C backend flags: " + flags);
+    if (superuserMode) superuserLogV(4, "exec (c backend): " + cmd.str());
     rc = std::system(cmd.str().c_str());
     if (rc == 0) {
       usedFlags = flags;
       usedBackend = "c";
-      if (superuserMode) superuserLog("C backend selected");
+      if (superuserMode) superuserLogV(2, "C backend selected");
       break;
     }
   }
@@ -10375,10 +10663,10 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
     std::cout.flush();
   }
   if (superuserMode) {
-    superuserLog("build completed with backend=" + usedBackend);
+    superuserLogV(1, "build completed with backend=" + usedBackend);
   }
   if (o.run) {
-    if (superuserMode) superuserLog("running binary: " + bin.string());
+    if (superuserMode) superuserLogV(1, "running binary: " + bin.string());
     const int runRc = std::system(q(bin).c_str());
     if (runRc != 0) return runRc;
   }
@@ -10397,15 +10685,76 @@ int main(int argc, char **argv) {
     if (o.repl) {
       return ls::runRepl(o, (argc > 0 && argv[0] != nullptr) ? argv[0] : "lsc");
     }
-    ls::setSuperuserLogging(false, false);
+    ls::setSuperuserLogging(o.superuserSession, false, o.superuserVerbosity);
     ls::Program p;
+    bool preparseSuperuserMode = o.superuserSession;
+    auto lineCountOf = [](const std::string &src) -> std::size_t {
+      if (src.empty()) return 0;
+      std::size_t lines = 1;
+      for (char c : src)
+        if (c == '\n') ++lines;
+      return lines;
+    };
+    auto tokenTextForLog = [](const std::string &text) -> std::string {
+      std::ostringstream out;
+      const std::size_t maxLen = 80;
+      std::size_t emitted = 0;
+      for (char c : text) {
+        if (emitted >= maxLen) break;
+        switch (c) {
+        case '\n': out << "\\n"; break;
+        case '\r': out << "\\r"; break;
+        case '\t': out << "\\t"; break;
+        case '\\': out << "\\\\"; break;
+        default:
+          if (std::iscntrl(static_cast<unsigned char>(c))) {
+            out << '?';
+          } else {
+            out << c;
+          }
+          break;
+        }
+        ++emitted;
+      }
+      if (text.size() > maxLen) out << "...";
+      return out.str();
+    };
     for (const auto &input : o.inputs) {
       stage = "parse";
       currentFile = input.string();
       std::string src = ls::readFile(input);
+      if (!preparseSuperuserMode && ls::lowerCopy(src).find("superuser(") != std::string::npos) {
+        preparseSuperuserMode = true;
+        ls::setSuperuserLogging(true, false, o.superuserVerbosity);
+        ls::superuserLogV(1, "superuser hint detected in source; enabling early diagnostics");
+      }
+      if (preparseSuperuserMode) {
+        ls::superuserLogV(2, "stage: lex begin: " + input.string());
+        ls::superuserLogV(4, "source stats: bytes=" + std::to_string(src.size()) +
+                                 ", lines=" + std::to_string(lineCountOf(src)));
+      }
       ls::Lexer lx(src);
-      ls::Parser ps(lx.run());
+      std::vector<ls::Token> toks = lx.run();
+      if (preparseSuperuserMode) {
+        ls::superuserLogV(3, "lexed tokens=" + std::to_string(toks.size()) + " for " + input.string());
+        if (o.superuserVerbosity >= 5) {
+          for (std::size_t ti = 0; ti < toks.size(); ++ti) {
+            const auto &tok = toks[ti];
+            std::ostringstream msg;
+            msg << "tok[" << ti << "] " << ls::tokenKindName(tok.kind) << " \"" << tokenTextForLog(tok.text) << "\" @"
+                << tok.span.line << ":" << tok.span.col;
+            ls::superuserLogV(5, msg.str());
+          }
+        }
+        ls::superuserLogV(2, "stage: parse file begin: " + input.string());
+      }
+      ls::Parser ps(std::move(toks));
       ls::Program part = ps.run();
+      if (preparseSuperuserMode) {
+        ls::superuserLogV(3, "parsed file summary: functions=" + std::to_string(part.f.size()) +
+                                 ", top-level statements=" + std::to_string(part.top.size()));
+        ls::superuserLogV(2, "stage: parse file complete: " + input.string());
+      }
       for (auto &fn : part.f) p.f.push_back(std::move(fn));
       for (auto &stmt : part.top) p.top.push_back(std::move(stmt));
     }
@@ -10438,32 +10787,73 @@ int main(int argc, char **argv) {
       p.top.clear();
       p.f.push_back(std::move(script));
     }
-    const bool superuserMode = ls::hasCallNamedProgram(p, "superuser");
+    const bool superuserCallDetected = ls::hasCallNamedProgram(p, "superuser");
+    const bool superuserMode = superuserCallDetected || o.superuserSession;
     const bool cleanOutputModeEarly = ls::hasFormatMarkerProgram(p);
-    ls::setSuperuserLogging(superuserMode, cleanOutputModeEarly);
-    if (superuserMode) {
+    ls::setSuperuserLogging(superuserMode, cleanOutputModeEarly, o.superuserVerbosity);
+    if (superuserCallDetected) {
       std::cerr << "Warning: superuser() enabled. LineScript safety checks are relaxed for developer diagnostics.\n"
                 << std::flush;
-      ls::superuserLog("superuser mode detected from source");
-      ls::superuserLog("inputs=" + std::to_string(o.inputs.size()));
+    }
+    if (superuserMode) {
+      if (superuserCallDetected) {
+        ls::superuserLogV(1, "superuser mode detected from source");
+      } else {
+        ls::superuserLogV(1, "superuser mode enabled via session flag");
+      }
+      ls::superuserLogV(2, "inputs=" + std::to_string(o.inputs.size()));
+      for (const auto &input : o.inputs) ls::superuserLogV(3, "input: " + input.string());
+      int fnCount = 0;
+      int externCount = 0;
+      for (const auto &f : p.f) {
+        if (f.ex) {
+          ++externCount;
+          continue;
+        }
+        ++fnCount;
+      }
+      ls::superuserLogV(4, "syntax summary: functions=" + std::to_string(fnCount) + ", extern=" +
+                                std::to_string(externCount));
+      for (const auto &f : p.f) {
+        std::ostringstream sig;
+        sig << "fn " << f.n << "(";
+        for (std::size_t i = 0; i < f.p.size(); ++i) {
+          if (i) sig << ", ";
+          sig << f.p[i].n << ":" << ls::typeName(f.p[i].t);
+        }
+        sig << ") -> " << ls::typeName(f.ret);
+        if (f.ex) sig << " [extern]";
+        if (f.inl) sig << " [inline]";
+        if (f.isCliFlag) sig << " [flag:" << f.cliFlagName << "]";
+        if (f.n == ls::kScriptEntryName) sig << " [script-entry]";
+        ls::superuserLogV(5, "syntax: " + sig.str());
+      }
+      ls::superuserLogV(2, "stage: parse complete");
     }
 
     stage = "type-check";
+    if (superuserMode) ls::superuserLogV(2, "stage: type-check begin");
     currentFile.clear();
     ls::TypeCheck tc(p, superuserMode);
     tc.run();
     if (superuserMode) {
-      for (const auto &w : tc.warnings()) ls::superuserLog("type-check warning: " + w);
+      for (const auto &w : tc.warnings()) ls::superuserLogV(1, "type-check warning: " + w);
+      ls::superuserLogV(2, "stage: type-check complete");
     }
 
     stage = "optimize";
-    if (superuserMode) ls::superuserLog("optimizer passes=" + std::to_string(o.passes));
+    if (superuserMode) {
+      ls::superuserLogV(2, "stage: optimize begin");
+      ls::superuserLogV(2, "optimizer passes=" + std::to_string(o.passes));
+    }
     ls::optimize(p, o.passes);
     stage = "re-type-check";
+    if (superuserMode) ls::superuserLogV(2, "stage: re-type-check begin");
     ls::TypeCheck tc2(p, superuserMode);
     tc2.run();
     if (superuserMode) {
-      for (const auto &w : tc2.warnings()) ls::superuserLog("re-type-check warning: " + w);
+      for (const auto &w : tc2.warnings()) ls::superuserLogV(1, "re-type-check warning: " + w);
+      ls::superuserLogV(2, "stage: optimize/re-type-check complete");
     }
     if (o.check) {
       std::cout << "Check passed: " << o.inputs.size() << " file(s)\n";
@@ -10471,14 +10861,16 @@ int main(int argc, char **argv) {
     }
 
     stage = "emit/build";
-    ls::EmitC ec(p, ls::inlineSet(p), superuserMode, activeCliFlags);
+    if (superuserMode) ls::superuserLogV(2, "stage: emit/build begin");
+    ls::EmitC ec(p, ls::inlineSet(p), superuserMode, o.superuserSession, activeCliFlags);
     if ((o.build || o.run) && !ec.hasEntry()) {
       throw std::runtime_error(ec.entryError());
     }
     const bool cleanOutputMode = cleanOutputModeEarly;
-    ls::setSuperuserLogging(superuserMode, cleanOutputMode);
+    ls::setSuperuserLogging(superuserMode, cleanOutputMode, o.superuserVerbosity);
     if (superuserMode) {
-      ls::superuserLog(std::string("debug stream=") + (cleanOutputMode ? "stderr/debug-window (.format mode)" : "terminal"));
+      ls::superuserLogV(3,
+                        std::string("debug stream=") + (cleanOutputMode ? "stderr/debug-window (.format mode)" : "terminal"));
     }
     const bool hasParallelFor = ls::hasParallelForProgram(p);
     const bool hasWinGraphicsDep = ls::hasWinGraphicsDepProgram(p);
@@ -10496,7 +10888,7 @@ int main(int argc, char **argv) {
     const bool ultraMinimalRuntime = ec.ultraMinimalRuntime();
     const bool hasInteractiveInput = ls::hasCallNamedProgram(p, "input") || ls::hasCallNamedProgram(p, "input_i64") ||
                                      ls::hasCallNamedProgram(p, "input_f64");
-    if (superuserMode) ls::superuserLog("emitting C backend source");
+    if (superuserMode) ls::superuserLogV(2, "emitting C backend source");
     const std::string cOut = ec.run();
     return ls::finish(o, cOut, cleanOutputMode, hasParallelFor, hasWinGraphicsDep, hasWinNetDep, hasPosixThreadDep,
                       ultraMinimalRuntime, hasInteractiveInput, superuserMode, ec.superuserIrDumpRequested());

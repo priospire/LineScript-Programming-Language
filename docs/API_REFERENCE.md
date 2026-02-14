@@ -197,6 +197,8 @@ Behavior:
 - `su.*` requires `superuser()`.
 - otherwise compile-time error: `Not privileged: call superuser() to enable developer superuser mode`.
 - enabling `superuser()` prints a warning because safety guard rails are intentionally relaxed.
+- in superuser mode, most LineScript guard rails are downgraded to warnings while backend compiler/toolchain validation continues.
+- REPL/shell-only controls: `su.help`, `su.verbosity.1`, `su.verbosity.2`, `su.verbosity.3`, `su.verbosity.4`, `su.verbosity.5`.
 
 ## Concurrency and Async
 

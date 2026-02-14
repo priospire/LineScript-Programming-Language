@@ -127,6 +127,9 @@ Notes:
 - `su.*` calls require `superuser()`; otherwise they fail with `Not privileged`.
 - `su.trace.on/off` toggles runtime trace logging.
 - `su.limit.set` controls runtime step/memory limits for debugging sessions.
+- shell-only `su.help` prints superuser controls and privileged API list.
+- shell-only `su.verbosity.1` is concise; `su.verbosity.5` is full source->token->parse->build trace output.
+- in superuser mode, most LineScript guardrails are downgraded to warnings so backend compiler/toolchain validation can continue.
 
 ## 3. String and Byte Helpers
 
