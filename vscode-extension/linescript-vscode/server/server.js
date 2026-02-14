@@ -19,6 +19,7 @@ const { TextDocument } = require("vscode-languageserver-textdocument");
 const { URI } = require("vscode-uri");
 const { formatLineScript } = require("./formatter");
 const { collectHeuristicDiagnostics } = require("./hints");
+const { FULL_BUILTIN_NAMES } = require("./builtin_catalog");
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -168,11 +169,20 @@ const builtinSignatures = [
   "pow(a: f64, b: f64) -> f64"
 ];
 
+const builtinDetailByName = new Map();
+for (const sig of builtinSignatures) {
+  const name = sig.split("(")[0].trim();
+  if (!builtinDetailByName.has(name)) {
+    builtinDetailByName.set(name, sig);
+  }
+}
+
+const builtinNames = Array.from(
+  new Set([...FULL_BUILTIN_NAMES, ...Array.from(builtinDetailByName.keys())])
+).sort((a, b) => a.localeCompare(b));
+
 const builtinDocs = new Map(
-  builtinSignatures.map((sig) => {
-    const name = sig.split("(")[0].trim();
-    return [name, sig];
-  })
+  builtinNames.map((name) => [name, builtinDetailByName.get(name) || `${name}(...)`])
 );
 
 const completionItems = [
@@ -227,12 +237,12 @@ const completionItems = [
     kind: CompletionItemKind.TypeParameter,
     detail: "type"
   })),
-  ...builtinSignatures.map((sig) => {
-    const name = sig.split("(")[0].trim();
+  ...builtinNames.map((name) => {
+    const detail = builtinDocs.get(name) || `${name}(...)`;
     return {
       label: name,
       kind: CompletionItemKind.Function,
-      detail: sig,
+      detail,
       insertText: name.includes(".") ? name : `${name}($1)`,
       insertTextFormat: name.includes(".") ? InsertTextFormat.PlainText : InsertTextFormat.Snippet
     };
@@ -266,7 +276,22 @@ function getDefaultLscPath() {
 
 function resolveCompilerPath(configuredPath, filePath) {
   const configured = String(configuredPath || "").trim();
-  if (configured) return configured;
+  if (configured) {
+    if (path.isAbsolute(configured)) return configured;
+    if (filePath && typeof filePath === "string") {
+      let dir = path.dirname(filePath);
+      const seen = new Set();
+      while (dir && !seen.has(dir)) {
+        seen.add(dir);
+        const candidate = path.resolve(dir, configured);
+        if (fs.existsSync(candidate)) return candidate;
+        const parent = path.dirname(dir);
+        if (!parent || parent === dir) break;
+        dir = parent;
+      }
+    }
+    return configured;
+  }
 
   const exeName = os.platform() === "win32" ? "lsc.exe" : "lsc";
   if (filePath && typeof filePath === "string") {
@@ -701,6 +726,20 @@ function clampLineRange(lineText, start, end) {
   return { start: s, end: e };
 }
 
+function fullStatementRange(lineText, fallbackCol) {
+  if (!lineText || lineText.length === 0) return { start: 0, end: 0 };
+  const commentIdx = lineText.indexOf("//");
+  const spanText = commentIdx >= 0 ? lineText.slice(0, commentIdx) : lineText;
+  const first = spanText.search(/\S/);
+  if (first < 0) {
+    const col = Math.max(0, Math.min(lineText.length - 1, Number.isFinite(fallbackCol) ? Math.floor(fallbackCol) : 0));
+    return clampLineRange(lineText, col, col + 1);
+  }
+  let end = spanText.length;
+  while (end > first && /\s/.test(spanText[end - 1])) end -= 1;
+  return clampLineRange(lineText, first, end);
+}
+
 function expandNearestTokenRange(lineText, preferredCol) {
   if (!lineText || lineText.length === 0) return { start: 0, end: 0 };
   const len = lineText.length;
@@ -747,6 +786,16 @@ function narrowCompilerRange(message, lineText, col) {
   const fallback = expandNearestTokenRange(lineText, col);
   if (!lineText) return fallback;
 
+  const msgLc = String(message || "").toLowerCase();
+  if (
+    msgLc.includes("expected expression") ||
+    msgLc.includes("unexpected token") ||
+    msgLc.includes("parse") ||
+    msgLc.includes("syntax")
+  ) {
+    return fullStatementRange(lineText, col);
+  }
+
   const fnMatch = message.match(/\bfunction\s+'([^']+)'/i);
   if (fnMatch) {
     const callRange = findCallRangeNearest(lineText, fnMatch[1], col);
@@ -770,7 +819,9 @@ function narrowCompilerRange(message, lineText, col) {
     const tokenRange = findTokenRangeNearest(lineText, quotedTokenMatch[1], col);
     if (tokenRange) return clampLineRange(lineText, tokenRange.start, tokenRange.end);
   }
-
+  if ((fallback.end - fallback.start) <= 1) {
+    return fullStatementRange(lineText, col);
+  }
   return fallback;
 }
 
@@ -870,22 +921,22 @@ function mergeDiagnosticsWithPrecedence(diagnostics) {
 
 function parseCompilerDiagnostics(output, document) {
   const diagnostics = [];
-  const re = /(?:^|\r?\n)\s*(?:(warning|warn|info|information|hint|error)\s*:\s*)?line\s+(\d+)\s*,\s*col\s+(\d+)\s*:\s*([^\r\n]+)/gi;
+  const re = /(?:^|\r?\n)([^\r\n]*?)\bline\s+(\d+)\s*,\s*col\s+(\d+)\s*:\s*([^\r\n]+)/gi;
   const lines = document ? document.getText().split(/\r?\n/) : [];
   let m;
   while ((m = re.exec(output)) !== null) {
-    const sevRaw = String(m[1] || "").toLowerCase();
+    const prefix = String(m[1] || "").toLowerCase();
     const line = Math.max(0, Number(m[2]) - 1);
     const col = Math.max(0, Number(m[3]) - 1);
     const msg = String(m[4]).trim();
     const lineText = line >= 0 && line < lines.length ? lines[line] : "";
     const narrowed = narrowCompilerRange(msg, lineText, col);
     let severity = DiagnosticSeverity.Error;
-    if (sevRaw === "warning" || sevRaw === "warn") {
+    if (/\bwarning\b|\bwarn\b/.test(prefix)) {
       severity = DiagnosticSeverity.Warning;
-    } else if (sevRaw === "info" || sevRaw === "information") {
+    } else if (/\binfo\b|\binformation\b/.test(prefix)) {
       severity = DiagnosticSeverity.Information;
-    } else if (sevRaw === "hint") {
+    } else if (/\bhint\b/.test(prefix)) {
       severity = DiagnosticSeverity.Hint;
     }
     diagnostics.push({
@@ -904,8 +955,11 @@ function parseCompilerDiagnostics(output, document) {
 function runCompilerCheck(lscPath, args, timeoutMs) {
   return new Promise((resolve) => {
     execFile(lscPath, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
-      const out = String(stdout || "") + "\n" + String(stderr || "");
+      let out = String(stdout || "") + "\n" + String(stderr || "");
       if (error) {
+        if (error && error.message) {
+          out = String(error.message) + "\n" + out;
+        }
         resolve({ ok: false, output: out.trim(), code: typeof error.code === "number" ? error.code : 1 });
         return;
       }

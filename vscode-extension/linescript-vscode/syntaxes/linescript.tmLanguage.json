@@ -27,7 +27,40 @@
       "include": "#builtinSuperuser"
     },
     {
-      "include": "#builtin"
+      "include": "#builtinDotRuntime"
+    },
+    {
+      "include": "#builtinPrivileged"
+    },
+    {
+      "include": "#builtinText"
+    },
+    {
+      "include": "#builtinCli"
+    },
+    {
+      "include": "#builtinCollection"
+    },
+    {
+      "include": "#builtinMemory"
+    },
+    {
+      "include": "#builtinHttp"
+    },
+    {
+      "include": "#builtinMath"
+    },
+    {
+      "include": "#builtinAsyncTime"
+    },
+    {
+      "include": "#builtinNumeric"
+    },
+    {
+      "include": "#builtinGraphics"
+    },
+    {
+      "include": "#builtinPhysics"
     },
     {
       "include": "#operator"
@@ -96,9 +129,53 @@
         }
       }
     },
-    "builtin": {
-      "name": "support.function.linescript",
-      "match": "\\b(print|println|input|input_i64|input_f64|len|contains|includes|replace|array_[A-Za-z0-9_]+|dict_[A-Za-z0-9_]+|map_[A-Za-z0-9_]+|object_[A-Za-z0-9_]+|option_[A-Za-z0-9_]+|result_[A-Za-z0-9_]+|mem_[A-Za-z0-9_]+|gfx_[A-Za-z0-9_]+|game_[A-Za-z0-9_]+|pg_[A-Za-z0-9_]+|np_[A-Za-z0-9_]+|phys_[A-Za-z0-9_]+|camera_[A-Za-z0-9_]+|key_down|key_down_name|clock_ms|clock_us|stateSpeed|superuser|su\\.[A-Za-z0-9_.]+|formatOutput|FormatOutput|sqrt|sin|cos|tan|asin|acos|atan|atan2|exp|log|log10|floor|ceil|round|pow|gcd|lcm|max|min|abs|clamp|to_i32|to_i64|to_f32|to_f64|parse_i64|parse_f64)\\b"
+    "builtinDotRuntime": {
+      "name": "support.function.linescript.runtime",
+      "match": "(?<![A-Za-z0-9_])(\\.format|\\.formatOutput|\\.stateSpeed|\\.freeConsole)(?=\\s*\\()"
+    },
+    "builtinPrivileged": {
+      "name": "support.function.linescript.privileged",
+      "match": "\\b(su\\.(?:trace\\.on|trace\\.off|capabilities|memory\\.inspect|compiler\\.inspect|ir\\.dump|debug\\.hook|limit\\.set))(?=\\s*\\()"
+    },
+    "builtinText": {
+      "name": "support.function.linescript.text",
+      "match": "\\b(print(?:_(?:i64|f64|bool|str))?|println(?:_(?:i64|f64|bool|str))?|input(?:_(?:i64|f64))?|len|contains|includes|replace|trim|lower|upper|substring|repeat|reverse|byte_at|ord|chr|bytes_len|is_empty|starts_with|ends_with|find|formatOutput|FormatOutput)\\b"
+    },
+    "builtinCli": {
+      "name": "support.function.linescript.cli",
+      "match": "\\b(cli_token_count|cli_token|cli_has|cli_value)\\b"
+    },
+    "builtinCollection": {
+      "name": "support.function.linescript.collection",
+      "match": "\\b(array_[A-Za-z0-9_]+|dict_[A-Za-z0-9_]+|map_[A-Za-z0-9_]+|object_[A-Za-z0-9_]+|option_[A-Za-z0-9_]+|result_[A-Za-z0-9_]+)\\b"
+    },
+    "builtinMemory": {
+      "name": "support.function.linescript.memory",
+      "match": "\\b(mem_[A-Za-z0-9_]+)\\b"
+    },
+    "builtinHttp": {
+      "name": "support.function.linescript.http",
+      "match": "\\b(http_[A-Za-z0-9_]+)\\b"
+    },
+    "builtinMath": {
+      "name": "support.function.linescript.math",
+      "match": "\\b(pi|tau|deg_to_rad|rad_to_deg|sqrt|sin|cos|tan|asin|acos|atan|atan2|exp|log|log10|floor|ceil|round|pow|gcd|lcm|max|min|abs|clamp|max_i64|min_i64|abs_i64|clamp_i64|max_f64|min_f64|abs_f64|clamp_f64|to_i32|to_i64|to_f32|to_f64|parse_i64|parse_f64|bool_to_i64|i64_to_bool)\\b"
+    },
+    "builtinAsyncTime": {
+      "name": "support.function.linescript.runtime",
+      "match": "\\b(clock_ms|clock_us|stateSpeed|spawn|await|await_all|FreeConsole)\\b"
+    },
+    "builtinNumeric": {
+      "name": "support.function.linescript.numeric",
+      "match": "\\b(np_[A-Za-z0-9_]+)\\b"
+    },
+    "builtinGraphics": {
+      "name": "support.function.linescript.graphics",
+      "match": "\\b(gfx_[A-Za-z0-9_]+|game_[A-Za-z0-9_]+|pg_[A-Za-z0-9_]+)\\b"
+    },
+    "builtinPhysics": {
+      "name": "support.function.linescript.physics",
+      "match": "\\b(phys_[A-Za-z0-9_]+|camera_[A-Za-z0-9_]+|key_down|key_down_name)\\b"
     },
     "operator": {
       "name": "keyword.operator.linescript",

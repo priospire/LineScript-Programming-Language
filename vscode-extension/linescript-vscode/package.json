@@ -132,7 +132,7 @@
     "vscode-uri": "^3.0.8"
   },
   "scripts": {
-    "test": "node server/formatter.test.js && node server/hints.test.js && node server/hints_stress.test.js && node server/false_positives.test.js",
+    "test": "node server/completion_catalog.test.js && node server/formatter.test.js && node server/hints.test.js && node server/hints_stress.test.js && node server/false_positives.test.js",
     "package:vsix": "npx @vscode/vsce package --out linescript-vscode.vsix",
     "install:local": "npm run package:vsix && code --install-extension linescript-vscode.vsix --force"
   }
