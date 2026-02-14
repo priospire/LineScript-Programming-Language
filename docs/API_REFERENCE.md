@@ -28,6 +28,25 @@ Common rules:
 - `^` and `**` are power operators.
 - typeless variables are inferred from initializer expression type.
 
+## Class/OOP Language Forms
+
+LineScript class syntax supports:
+- `class Name do ... end`
+- single inheritance: `class Child extends Parent do ... end`
+- constructor forms: `constructor(...)` and class-named constructor
+- derived constructor init-list base calls: `constructor(...) : Base(...) do ... end`
+- member modifiers: `public`, `protected`, `private`, `static`, `virtual`, `override`, `final`
+- `this` member access and assignment
+- static calls via class name: `TypeName.method(...)`
+
+Overload behavior:
+- top-level overload resolution: exact match first, then safe numeric widening.
+- class methods support overload declarations; call sites currently require distinct arity.
+
+Full reference and examples:
+- `docs/OOP.md`
+- `docs/SYNTAX.md`
+
 ## Input Detection API (Keyboard, Mouse, Scroll)
 
 ### Keyboard polling
@@ -584,6 +603,14 @@ Behavior:
 - custom flags run before normal script entry.
 - undefined flags are warned and ignored.
 - malformed flags (for example `---bad`) are warned and ignored.
+- grouped custom parser arguments are supported and strict:
+  - example: `-O [ -p max -X [ --beta-features ] ] -W [ --not-strict ] -i prog.scl`
+  - unbalanced `[` / `]` is a hard CLI parse error.
+- grouped and custom tokens are available inside LineScript through:
+  - `cli_token_count() -> i64`
+  - `cli_token(i64) -> str`
+  - `cli_has(str) -> bool`
+  - `cli_value(str) -> str`
 
 ### Conditional logic and operators
 

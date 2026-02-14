@@ -622,6 +622,50 @@ Notes:
 - class names can be used in type annotations and are stored as `i64` handles internally.
 - constructor is optional; a default constructor is generated when omitted.
 - classes can use `i32`/`f32` fields when you want narrower numeric storage, but `i64`/`f64` remain fully supported.
+- single inheritance is supported with `extends`.
+- method/access modifiers are supported: `public`, `protected`, `private`, `static`, `virtual`, `override`, `final`.
+- derived constructors support direct-base init-list calls: `constructor(...) : Base(...) do ... end`.
+- static methods must be called via class name (`TypeName.method(...)`).
+- top-level functions support overload resolution (exact match, then safe numeric widening).
+- class methods support overload declarations; call sites currently require distinct arity for unambiguous resolution.
+
+Advanced inheritance/modifier example:
+
+```linescript
+class Base do
+  declare x: i64 = 0
+
+  public fn constructor(seed: i64) do
+    this.x = seed
+  end
+
+  public virtual fn value() -> i64 do
+    return this.x
+  end
+
+  public static fn scale(v: i64) -> i64 do
+    return v * 2
+  end
+end
+
+class Derived extends Base do
+  declare y: i64 = 0
+
+  public fn constructor(a: i64, b: i64) : Base(a) do
+    this.y = b
+  end
+
+  public override fn value() -> i64 do
+    return this.x + this.y
+  end
+
+  public final fn only() -> i64 do
+    return this.y
+  end
+end
+```
+
+For the full OOP reference, see `docs/OOP.md`.
 
 Low-level object model is still available:
 

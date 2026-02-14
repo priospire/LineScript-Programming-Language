@@ -14,6 +14,7 @@ Recent change history: `docs/CHANGELOG.md`.
 
 Documentation map:
 - syntax: `docs/SYNTAX.md`
+- OOP (classes/inheritance/modifiers): `docs/OOP.md`
 - standard library: `docs/STDLIB.md`
 - language guide: `docs/LANGUAGE_GUIDE.md`
 - complete API reference: `docs/API_REFERENCE.md`
@@ -22,7 +23,8 @@ Documentation map:
 
 VSCode extension source:
 - `vscode-extension/linescript-vscode`
-- includes LSP diagnostics, suggestions, quick fixes, snippets, and `.lsc/.ls` icon theme support.
+- compiler-authenticated diagnostics by default (`lsc --check`), plus optional heuristic hints/suggestions.
+- includes quick fixes, snippets, and `.lsc/.ls` icon theme support.
 - one-time install scripts: `scripts/install_vscode_extension.ps1` and `scripts/install_vscode_extension.sh`
 
 ## Quick Start
@@ -56,6 +58,62 @@ Linux notes:
 - built-in HTTP server/client works on Linux.
 - game/window key polling is currently native on Windows; on Linux game APIs run in safe headless mode.
 - use `linescript.sh` and `*.sh` test/package scripts (no PowerShell dependency required).
+
+## Install and Project Setup
+
+### Method 1 (your workflow): copy from `dist` into your project root
+
+1. Put the `dist` folder inside your workspace/project folder.
+2. Open `dist`, then open the version folder inside it (example: `LineScript-win64-20260214`).
+3. Copy everything inside that version folder.
+4. Paste those files/folders into your project root (outside `dist`).
+5. Delete `dist` when done.
+6. Create your program file (example: `main.lsc`) in project root.
+7. Run:
+
+```powershell
+.\linescript.cmd .\main.lsc -O4 --cc clang
+```
+
+If you prefer direct compiler usage:
+
+```powershell
+.\lsc.exe .\main.lsc --run -O4 --cc clang -o .\main.exe
+```
+
+### Method 2: unzip release directly
+
+1. Extract `LineScript-win64-YYYYMMDD.zip` into your project root.
+2. Make sure `lsc.exe` and `linescript.cmd` are in the same folder as your `.lsc` file.
+3. Run `.\linescript.cmd .\main.lsc -O4 --cc clang`.
+
+### Method 3: build from source
+
+1. Build compiler:
+
+```powershell
+clang++ -std=c++20 -O3 -Wall -Wextra -pedantic src/lsc.cpp -o lsc.exe
+```
+
+2. Run your file:
+
+```powershell
+.\lsc.exe .\main.lsc --run -O4 --cc clang -o .\main.exe
+```
+
+### First file quick check
+
+Create `main.lsc`:
+
+```linescript
+print("hello from LineScript")
+```
+
+Run it:
+
+```powershell
+.\linescript.cmd .\main.lsc -O4 --cc clang
+```
 
 ## Interactive Shell (REPL)
 
@@ -168,6 +226,36 @@ for i in 0..5 do
 end
 println(sum)
 ```
+
+OOP quick syntax:
+
+```linescript
+class Base do
+  declare x: i64 = 0
+
+  public fn constructor(seed: i64) do
+    this.x = seed
+  end
+
+  public virtual fn value() -> i64 do
+    return this.x
+  end
+end
+
+class Derived extends Base do
+  declare y: i64 = 0
+
+  public fn constructor(a: i64, b: i64) : Base(a) do
+    this.y = b
+  end
+
+  public override final fn value() -> i64 do
+    return this.x + this.y
+  end
+end
+```
+
+For complete OOP rules and edge cases, see `docs/OOP.md`.
 
 Input:
 
@@ -495,11 +583,22 @@ Options:
 - `--passes <n>` greedy optimizer passes
 - `-O4` strongest speed profile (recommended default for release/perf)
 - `--max-speed` compatibility alias for `-O4`
+- `--pgo-generate` build an instrumented binary for profile collection (max-speed pipeline)
+- `--pgo-use <profile-dir>` use collected PGO profiles from `<profile-dir>`
+- `--bolt-use <fdata>` apply BOLT profile optimization when `llvm-bolt` is available
 - `--keep-c` keep generated C output
 - `-o <path>` output path
 - custom `--flag-name` arguments are supported via `flag flag-name() do ... end` in source.
 - undefined custom flags print a warning and are ignored.
 - malformed flags (for example `---bad`) print a warning and are ignored.
+- grouped custom parser arguments are supported (for example `-O [ -p max -X [ --beta-features ] ]`).
+- grouped tokens are strict: unbalanced `[` / `]` is a hard CLI parse error.
+- grouped/inline parser tokens are exposed to scripts via:
+  - `cli_token_count()`
+  - `cli_token(idx)`
+  - `cli_has(flag)`
+  - `cli_value(flag)`
+- unknown long options in grouped/custom-parser mode do not trigger undefined-flag warnings unless they are explicit top-level custom flag invocations.
 
 ## Speed Features
 
@@ -510,6 +609,8 @@ Options:
 - greedy multi-pass optimizer (constant folding, DCE, branch/loop simplification, inlining)
 - constant small-trip loop unrolling in optimizer
 - aggressive native flags in `-O4` mode
+- optional PGO stage: `--pgo-generate` -> collect workload profiles -> `--pgo-use <dir>`
+- optional BOLT stage: `--bolt-use <fdata>` for post-link hot-path layout tuning when available
 - on Windows, eligible `-O4` programs use an ultra-minimal no-CRT backend path for lower launch overhead
 - loop vectorization/unroll hints in emitted C
 - `parallel for` maps to OpenMP parallel+SIMD when available (serial fallback otherwise)
@@ -577,6 +678,7 @@ This produces a distributable ZIP with:
 - `linescript.cmd` / `linescript.ps1`
 - `docs/`
 - `examples/`
+- latest-only dist policy: packaging removes older `LineScript-*` bundles/zips so `dist` only keeps the newest release.
 
 For a new project, extract the ZIP and copy its contents into your project folder, then run:
 

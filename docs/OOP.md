@@ -7,7 +7,12 @@ This document is the complete Object-Oriented Programming reference for LineScri
 LineScript supports C++-style class syntax:
 - typed fields
 - constructor
+- single inheritance with `extends`
 - instance methods
+- static methods
+- virtual/override/final method contracts
+- access modifiers (`public`/`protected`/`private`)
+- method overloading
 - `this` inside class members
 - member access and member assignment
 
@@ -97,6 +102,15 @@ Rules:
 - constructor return type is implicit (do not write `-> ...`)
 - constructor cannot be `extern`
 - if no constructor is defined, LineScript generates a default one automatically
+- for derived classes, constructor init-list base calls are supported:
+
+```linescript
+constructor(a: i64, b: i64) : Base(a) do
+  this.extra = b
+end
+```
+
+If a derived constructor does not provide an init-list, LineScript calls the direct base constructor with zero arguments.
 
 When you instantiate:
 
@@ -128,10 +142,17 @@ Method modifiers:
 - `inline` is allowed
 - `extern` is allowed for methods
 - `throws` contracts are supported
+- access control: `public`, `protected`, `private`
+- dispatch/lifecycle: `virtual`, `override`, `final`
+- `static` methods callable from class name
 
 Rules:
-- duplicate method names in the same class are not allowed
-- method overloading by parameter list is not supported yet
+- methods can be overloaded by parameter type list
+- top-level overload resolution uses exact match first, then safe widening
+- class-method overload calls currently require distinct arity (same-arity overloads are rejected as ambiguous)
+- duplicate overload signatures in the same class are not allowed
+- `override` requires a compatible base method
+- overriding `final` methods is rejected
 
 ## `this` and Member Access
 
@@ -148,6 +169,12 @@ obj.value = 10
 obj.value += 5
 println(obj.value)
 obj.method()
+```
+
+Static call form:
+
+```linescript
+MathUtil.scale(5)
 ```
 
 Supported member writes include normal and compound assignments (`=`, `+=`, `-=`, `*=`, `/=`, `%=` and power-assign forms where valid).
@@ -268,6 +295,38 @@ class Particle do
 end
 ```
 
+## Example 6: Inheritance + Override + Static
+
+```linescript
+class Base do
+  declare x: i64 = 0
+
+  public fn constructor(seed: i64) do
+    this.x = seed
+  end
+
+  public virtual fn value() -> i64 do
+    return this.x
+  end
+
+  public static fn scale(v: i64) -> i64 do
+    return v * 2
+  end
+end
+
+class Derived extends Base do
+  declare y: i64 = 0
+
+  public fn constructor(a: i64, b: i64) : Base(a) do
+    this.y = b
+  end
+
+  public override fn value() -> i64 do
+    return this.x + this.y
+  end
+end
+```
+
 ## Common Errors and What They Mean
 
 - `class fields must be declared before methods`
@@ -285,19 +344,23 @@ end
 - `class 'X' has no field 'y'`
  - unknown field access/assignment
 
-- `class 'X' has no method 'm'`
- - unknown method call
+- `class 'X' has no matching method 'm'`
+ - method name exists but no overload matches call arity
+
+- `override method 'm' has no base method to override`
+ - `override` was used without a compatible base method
+
+- `cannot override final base method`
+ - derived class attempted to replace a `final` base method
+
+- `static method 'm' must be called via class name`
+ - static method called from an instance
 
 ## Current OOP Limits
 
-Not currently built in:
-- inheritance
-- virtual dispatch / polymorphic method override
-- access modifiers (`public/private/protected`)
-- static class methods/properties
-- method overloading
-
-These are planned-style capabilities, but not part of the current compiler behavior.
+- single inheritance only
+- constructors are single-definition per class (no ctor overloading yet)
+- class fields are currently handle-backed at runtime (`i64` under the hood)
 
 ## Performance Notes
 

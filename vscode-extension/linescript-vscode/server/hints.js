@@ -24,7 +24,15 @@ const KEYWORDS = new Set([
   "do",
   "end",
   "class",
+  "extends",
   "constructor",
+  "public",
+  "protected",
+  "private",
+  "static",
+  "virtual",
+  "override",
+  "final",
   "throws",
   "break",
   "continue",
@@ -243,8 +251,12 @@ const DOT_BUILTINS = new Map([
   ["su.limit.set", { min: 2, max: 2 }]
 ]);
 
+const SUPERUSER_SPELLING_SUGGESTIONS = new Map([
+  ["su.capabilites", "su.capabilities"]
+]);
+
 const FUNCTION_DECL_RE =
-  /^\s*(?:(inline|extern|fn|func)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*(?:->\s*([A-Za-z_][A-Za-z0-9_]*))?\s*(?:throws\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)?\s*(do|\{)?\s*$/;
+  /^\s*(?:(public|protected|private|static|virtual|override|final|inline|extern|fn|func)\s+)*([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*(?::\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]*\))?(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]*\))?)*\s*)?(?:->\s*([A-Za-z_][A-Za-z0-9_]*))?\s*(?:throws\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)?\s*(do|\{)?\s*$/;
 const FLAG_DECL_RE = /^\s*flag\s+([A-Za-z_][A-Za-z0-9_\-]*)\s*\(([^)]*)\)\s*(do|\{)?\s*$/;
 
 function clampMaxHints(value) {
@@ -390,11 +402,20 @@ function isLoopScopeActive(scopeStack) {
 
 function shouldTreatAsFunctionDeclaration(match) {
   if (!match) return false;
+  const name = match[2] || "";
   const hasKeywordOrSig = !!(match[1] || match[4]);
+  if (!hasKeywordOrSig && name === "superuser") return false;
   if (hasKeywordOrSig) return true;
   if (!match[5]) return false;
   const paramsInfo = analyzeParameterList(match[3]);
   return paramsInfo.malformedParts.length === 0;
+}
+
+function canonicalSuperuserCallName(name) {
+  if (typeof name !== "string") return "";
+  if (name === "superuser") return "su";
+  if (name.startsWith("superuser.")) return "su." + name.slice("superuser.".length);
+  return name;
 }
 
 function normalizeFunctionDeclPrefix(line) {
@@ -611,12 +632,24 @@ function collectDeclaredFunctionArities(lines) {
     if (fnMatch && shouldTreatAsFunctionDeclaration(fnMatch)) {
       const name = fnMatch[2];
       const paramInfo = analyzeParameterList(fnMatch[3]);
-      arities.set(name, { min: paramInfo.count, max: paramInfo.count, line: i });
+      const prev = arities.get(name);
+      if (!prev) {
+        arities.set(name, { min: paramInfo.count, max: paramInfo.count, line: i });
+      } else {
+        prev.min = Math.min(prev.min, paramInfo.count);
+        prev.max = Math.max(prev.max, paramInfo.count);
+      }
     }
     const flagMatch = rawCodePart.match(FLAG_DECL_RE);
     if (flagMatch && /^[A-Za-z_][A-Za-z0-9_-]*$/.test(flagMatch[1])) {
       const paramInfo = analyzeParameterList(flagMatch[2]);
-      arities.set(flagMatch[1], { min: paramInfo.count, max: paramInfo.count, line: i });
+      const prev = arities.get(flagMatch[1]);
+      if (!prev) {
+        arities.set(flagMatch[1], { min: paramInfo.count, max: paramInfo.count, line: i });
+      } else {
+        prev.min = Math.min(prev.min, paramInfo.count);
+        prev.max = Math.max(prev.max, paramInfo.count);
+      }
     }
   }
   return arities;
@@ -1022,13 +1055,22 @@ function collectHeuristicDiagnostics(document, settings) {
       };
       const allowKeywordFunctionName = name === "constructor";
       if (!KEYWORDS.has(name) || allowKeywordFunctionName) {
-        const ok = declareSymbol(scope, name, {
-          isConst: true,
-          kind: "function",
-          line: i,
-          arity: { min: paramsInfo.count, max: paramsInfo.count }
-        });
-        if (!ok) {
+        const existing = scope.symbols.get(name);
+        if (!existing) {
+          declareSymbol(scope, name, {
+            isConst: true,
+            kind: "function",
+            line: i,
+            arity: { min: paramsInfo.count, max: paramsInfo.count }
+          });
+        } else if (existing.kind === "function") {
+          if (!existing.arity) {
+            existing.arity = { min: paramsInfo.count, max: paramsInfo.count };
+          } else {
+            existing.arity.min = Math.min(existing.arity.min, paramsInfo.count);
+            existing.arity.max = Math.max(existing.arity.max, paramsInfo.count);
+          }
+        } else {
           addDiagnostic(
             makeDiagnostic(
               i,
@@ -1111,23 +1153,40 @@ function collectHeuristicDiagnostics(document, settings) {
         }
       }
     } else {
-      const looksLikeFnSig = fnCandidate.match(/^\s*(?:(inline|extern|fn|func)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+      const looksLikeFnSig = fnCandidate.match(
+        /^\s*(?:(?:public|protected|private|static|virtual|override|final|inline|extern|fn|func)\s+)*([A-Za-z_][A-Za-z0-9_]*)\s*\(/
+      );
       if (looksLikeFnSig && (/\bdo\b/.test(codePart) || /{\s*(?:$|\/\/)/.test(codePart) || /\bfn\b|\bfunc\b|\binline\b|\bextern\b/.test(codePart))) {
-        const name = looksLikeFnSig[2];
+        const name = looksLikeFnSig[1];
         if (KEYWORDS.has(name)) {
           // Block heads like `if (...) do` are not function signatures.
         } else {
-          const explicitDeclKeyword = /^\s*(?:inline|extern|fn|func)\b/.test(fnCandidate);
+          const nameIdx = fnCandidate.indexOf(name);
+          const prefix = nameIdx >= 0 ? fnCandidate.slice(0, nameIdx) : fnCandidate;
+          const explicitDeclKeyword = /\b(?:inline|extern|fn|func)\b/.test(prefix);
           const openIdx = fnCandidate.indexOf("(", fnCandidate.indexOf(name));
           const closeIdx = openIdx >= 0 ? findMatchingParen(fnCandidate, openIdx) : -1;
           let paramsMalformed = true;
+          let paramsInfo = { names: [], malformedParts: [] };
           if (openIdx >= 0 && closeIdx > openIdx) {
-            const p = analyzeParameterList(fnCandidate.slice(openIdx + 1, closeIdx));
-            paramsMalformed = p.malformedParts.length > 0;
+            paramsInfo = analyzeParameterList(fnCandidate.slice(openIdx + 1, closeIdx));
+            paramsMalformed = paramsInfo.malformedParts.length > 0;
+            const likelyDecl = explicitDeclKeyword || name === "constructor";
+            if (likelyDecl) {
+              for (const pName of paramsInfo.names) {
+                declaredThisLine.add(pName);
+              }
+              if (/\bdo\b/.test(codePart) || /{\s*(?:$|\/\/)/.test(codePart)) {
+                for (const pName of paramsInfo.names) {
+                  pendingDeclsForNextScope.push({ name: pName, isConst: false, kind: "param", line: i });
+                }
+              }
+            }
           }
           if (!explicitDeclKeyword && paramsMalformed) {
             // Likely a normal call expression with a block argument (e.g. formatOutput("x") do).
           } else {
+            statementRecognized = true;
             const col = codePart.indexOf(name);
             addDiagnostic(
               makeDiagnostic(
@@ -1356,7 +1415,12 @@ function collectHeuristicDiagnostics(document, settings) {
       if (KEYWORDS.has(call.name)) continue;
 
       const localSym = findSymbol(scopeStack, call.name);
-      const builtinArity = BUILTIN_ARITY.get(call.name) || DOT_BUILTINS.get(call.name);
+      const canonicalCall = canonicalSuperuserCallName(call.name);
+      const builtinArity =
+        BUILTIN_ARITY.get(call.name) ||
+        DOT_BUILTINS.get(call.name) ||
+        BUILTIN_ARITY.get(canonicalCall) ||
+        DOT_BUILTINS.get(canonicalCall);
       const knownArity = builtinArity || knownFunctionArities.get(call.name);
 
       statementRecognized = true;
@@ -1388,17 +1452,34 @@ function collectHeuristicDiagnostics(document, settings) {
         );
       }
 
-      if (!knownArity && !localSym && !call.name.includes(".") && !isBuiltinToken(call.name)) {
-        addDiagnostic(
-          makeDiagnostic(
-            i,
-            call.nameStart,
-            call.nameEnd,
-            DiagnosticSeverity.Warning,
-            "ls-unknown-function",
-            `'${call.name}(...)' is not a known function in this file or built-in API.`
-          )
-        );
+      if (!knownArity && !localSym && !isBuiltinToken(call.name)) {
+        if (canonicalCall.startsWith("su.")) {
+          const suggested = SUPERUSER_SPELLING_SUGGESTIONS.get(canonicalCall) || "su.capabilities";
+          addDiagnostic(
+            makeDiagnostic(
+              i,
+              call.nameStart,
+              call.nameEnd,
+              DiagnosticSeverity.Warning,
+              "ls-unknown-su-command",
+              `Unknown superuser command '${call.name}()'.`,
+              { title: `Replace with '${suggested}()'`, newText: suggested }
+            )
+          );
+          continue;
+        }
+        if (!call.name.includes(".")) {
+          addDiagnostic(
+            makeDiagnostic(
+              i,
+              call.nameStart,
+              call.nameEnd,
+              DiagnosticSeverity.Warning,
+              "ls-unknown-function",
+              `'${call.name}(...)' is not a known function in this file or built-in API.`
+            )
+          );
+        }
         continue;
       }
 

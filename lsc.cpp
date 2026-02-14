@@ -551,7 +551,9 @@ struct EUnary : Expr {
 struct EBinary : Expr {
   BK op;
   EP l, r;
-  EBinary(BK opIn, EP lIn, EP rIn, Span s) : Expr(EK::Binary, s), op(opIn), l(std::move(lIn)), r(std::move(rIn)) {}
+  std::string overrideFn;
+  EBinary(BK opIn, EP lIn, EP rIn, Span s, std::string overrideFnIn = {})
+      : Expr(EK::Binary, s), op(opIn), l(std::move(lIn)), r(std::move(rIn)), overrideFn(std::move(overrideFnIn)) {}
 };
 struct ECall : Expr {
   std::string f;
@@ -634,8 +636,17 @@ struct Param {
 };
 struct Fn {
   std::string n;
+  std::string sourceName;
   bool isCliFlag = false;
   std::string cliFlagName;
+  bool isOperatorOverride = false;
+  std::optional<BK> operatorKind;
+  bool isClassMethod = false;
+  std::string classOwner;
+  bool methodStatic = false;
+  bool methodVirtual = false;
+  bool methodOverride = false;
+  bool methodFinal = false;
   bool ex = false;
   bool inl = false;
   std::vector<Param> p;
@@ -657,11 +668,107 @@ struct ParsedClassField {
   Span s;
 };
 
-struct ClassInfo {
-  Span s;
-  std::unordered_map<std::string, Type> fields;
-  std::unordered_map<std::string, std::string> methods;
+enum class AccessModifier { Public, Protected, Private };
+
+struct MethodInfo {
+  std::string symbol;
+  std::string owner;
+  AccessModifier access = AccessModifier::Public;
+  bool isStatic = false;
+  bool isVirtual = false;
+  bool isOverride = false;
+  bool isFinal = false;
+  std::vector<Type> params;
+  Type ret = Type::Void;
 };
+
+struct ClassInfo {
+  std::string name;
+  Span s;
+  std::string base;
+  std::unordered_map<std::string, Type> fields;
+  std::unordered_map<std::string, std::vector<MethodInfo>> methods;
+};
+
+static bool startsWith(const std::string &s, const char *prefix) {
+  return s.rfind(prefix, 0) == 0;
+}
+
+static bool isOverloadableBinaryOp(BK op) {
+  switch (op) {
+  case BK::Add:
+  case BK::Sub:
+  case BK::Mul:
+  case BK::Div:
+  case BK::Mod:
+  case BK::Pow:
+  case BK::Eq:
+  case BK::Neq:
+  case BK::Lt:
+  case BK::Lte:
+  case BK::Gt:
+  case BK::Gte:
+  case BK::And:
+  case BK::Or:
+    return true;
+  }
+  return false;
+}
+
+static std::string operatorOverrideSymbol(BK op) {
+  switch (op) {
+  case BK::Add: return "__ls_op_add";
+  case BK::Sub: return "__ls_op_sub";
+  case BK::Mul: return "__ls_op_mul";
+  case BK::Div: return "__ls_op_div";
+  case BK::Mod: return "__ls_op_mod";
+  case BK::Pow: return "__ls_op_pow";
+  case BK::Eq: return "__ls_op_eq";
+  case BK::Neq: return "__ls_op_neq";
+  case BK::Lt: return "__ls_op_lt";
+  case BK::Lte: return "__ls_op_lte";
+  case BK::Gt: return "__ls_op_gt";
+  case BK::Gte: return "__ls_op_gte";
+  case BK::And: return "__ls_op_and";
+  case BK::Or: return "__ls_op_or";
+  }
+  return "";
+}
+
+static std::string operatorSymbolText(BK op) {
+  switch (op) {
+  case BK::Add: return "+";
+  case BK::Sub: return "-";
+  case BK::Mul: return "*";
+  case BK::Div: return "/";
+  case BK::Mod: return "%";
+  case BK::Pow: return "^";
+  case BK::Eq: return "==";
+  case BK::Neq: return "!=";
+  case BK::Lt: return "<";
+  case BK::Lte: return "<=";
+  case BK::Gt: return ">";
+  case BK::Gte: return ">=";
+  case BK::And: return "&&";
+  case BK::Or: return "||";
+  }
+  return "?";
+}
+
+static bool isSuperuserNamespaceSymbol(const std::string &name) {
+  return name == "su" || name == "superuser" || startsWith(name, "su.") || startsWith(name, "superuser.");
+}
+
+static std::string canonicalSuperuserNamespaceSymbol(const std::string &name) {
+  if (name == "superuser") return "su";
+  if (startsWith(name, "superuser.")) return std::string("su.") + name.substr(10);
+  return name;
+}
+
+static std::string canonicalSuperuserCallName(const std::string &name) {
+  if (startsWith(name, "superuser.")) return std::string("su.") + name.substr(10);
+  return name;
+}
 
 class Parser {
 public:
@@ -683,11 +790,18 @@ public:
   }
 
 private:
+  struct OverloadDecl {
+    std::vector<Type> params;
+    std::string symbol;
+  };
+
   std::vector<Token> t_;
   std::size_t i_ = 0;
   std::unordered_map<std::string, ClassInfo> classes_;
   std::unordered_map<std::string, std::string> varClass_;
   std::unordered_set<std::string> cliFlagNames_;
+  std::unordered_map<std::string, std::vector<OverloadDecl>> topFnOverloads_;
+  std::size_t topFnOverloadId_ = 0;
   std::string currentClass_;
 
   const Token &cur() const { return t_[i_]; }
@@ -740,6 +854,47 @@ private:
     for (char c : name) out.push_back(c == '-' ? '_' : c);
     return out;
   }
+  static bool isOverloadableOperatorTokenKind(TokenKind k) {
+    switch (k) {
+    case TokenKind::Plus:
+    case TokenKind::Minus:
+    case TokenKind::Star:
+    case TokenKind::Slash:
+    case TokenKind::Percent:
+    case TokenKind::Pow:
+    case TokenKind::Eq:
+    case TokenKind::Neq:
+    case TokenKind::Lt:
+    case TokenKind::Lte:
+    case TokenKind::Gt:
+    case TokenKind::Gte:
+    case TokenKind::AndAnd:
+    case TokenKind::OrOr:
+      return true;
+    default:
+      return false;
+    }
+  }
+  static BK overloadableOperatorTokenToBK(TokenKind k, const Span &s) {
+    switch (k) {
+    case TokenKind::Plus: return BK::Add;
+    case TokenKind::Minus: return BK::Sub;
+    case TokenKind::Star: return BK::Mul;
+    case TokenKind::Slash: return BK::Div;
+    case TokenKind::Percent: return BK::Mod;
+    case TokenKind::Pow: return BK::Pow;
+    case TokenKind::Eq: return BK::Eq;
+    case TokenKind::Neq: return BK::Neq;
+    case TokenKind::Lt: return BK::Lt;
+    case TokenKind::Lte: return BK::Lte;
+    case TokenKind::Gt: return BK::Gt;
+    case TokenKind::Gte: return BK::Gte;
+    case TokenKind::AndAnd: return BK::And;
+    case TokenKind::OrOr: return BK::Or;
+    default: break;
+    }
+    throw CompileError(s, "unsupported operator override token");
+  }
   bool startsFunctionDecl() const {
     std::size_t j = skipNlFrom(i_);
     bool sawModifier = false;
@@ -770,6 +925,14 @@ private:
       return j < t_.size() && t_[j].kind == TokenKind::LPar;
     }
     if (j >= t_.size() || t_[j].kind != TokenKind::Id) return false;
+    if (t_[j].text == "operator") {
+      ++j;
+      j = skipNlFrom(j);
+      if (j >= t_.size() || !isOverloadableOperatorTokenKind(t_[j].kind)) return false;
+      ++j;
+      j = skipNlFrom(j);
+      return j < t_.size() && t_[j].kind == TokenKind::LPar;
+    }
     ++j;
     j = skipNlFrom(j);
     if (j >= t_.size() || t_[j].kind != TokenKind::LPar) return false;
@@ -876,7 +1039,7 @@ private:
     }
     case EK::Binary: {
       const auto &n = static_cast<const EBinary &>(e);
-      return std::make_unique<EBinary>(n.op, cloneExpr(*n.l), cloneExpr(*n.r), e.s);
+      return std::make_unique<EBinary>(n.op, cloneExpr(*n.l), cloneExpr(*n.r), e.s, n.overrideFn);
     }
     case EK::Call: {
       const auto &n = static_cast<const ECall &>(e);
@@ -925,17 +1088,118 @@ private:
     return params;
   }
 
-  std::string classMethodSymbol(const std::string &cls, const std::string &method) const {
-    return "__ls_cls_" + cls + "_" + method;
+  static bool sameParamTypes(const std::vector<Type> &a, const std::vector<Type> &b) {
+    if (a.size() != b.size()) return false;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
+  std::string mangleTopLevelOverloadSymbol(const std::string &name) {
+    return "__ls_ovl_" + name + "_" + std::to_string(++topFnOverloadId_);
+  }
+  void registerTopLevelOverload(Fn &f, const Span &s) {
+    if (f.isCliFlag || f.isOperatorOverride) {
+      f.sourceName = f.n;
+      return;
+    }
+    const std::string publicName = f.n;
+    std::vector<Type> paramTypes;
+    paramTypes.reserve(f.p.size());
+    for (const auto &param : f.p) paramTypes.push_back(param.t);
+    auto &decls = topFnOverloads_[publicName];
+    for (const auto &decl : decls) {
+      if (sameParamTypes(decl.params, paramTypes)) {
+        throw CompileError(s, "duplicate overload for function '" + publicName + "'");
+      }
+    }
+    f.sourceName = publicName;
+    if (!decls.empty()) {
+      f.n = mangleTopLevelOverloadSymbol(publicName);
+    }
+    decls.push_back(OverloadDecl{std::move(paramTypes), f.n});
+  }
+
+  std::string classMethodSymbol(const std::string &cls, const std::string &method, std::size_t overloadIndex = 0) const {
+    if (overloadIndex == 0) return "__ls_cls_" + cls + "_" + method;
+    return "__ls_cls_" + cls + "_" + method + "_" + std::to_string(overloadIndex);
+  }
+  std::string classOperatorMethodKey(BK op) const { return operatorOverrideSymbol(op); }
 
   std::string resolveReceiverClass(const std::string &receiver) const {
     if (receiver == "this") return currentClass_;
     auto it = varClass_.find(receiver);
     return it == varClass_.end() ? "" : it->second;
   }
+  bool isSubclassOf(const std::string &child, const std::string &ancestor) const {
+    if (child.empty() || ancestor.empty()) return false;
+    std::string cur = child;
+    while (!cur.empty()) {
+      if (cur == ancestor) return true;
+      auto it = classes_.find(cur);
+      if (it == classes_.end()) return false;
+      cur = it->second.base;
+    }
+    return false;
+  }
+  const MethodInfo *findMethodByArity(const ClassInfo &info, const std::string &methodKey, std::size_t arity) const {
+    auto it = info.methods.find(methodKey);
+    if (it == info.methods.end()) return nullptr;
+    const MethodInfo *candidate = nullptr;
+    for (const auto &m : it->second) {
+      if (m.params.size() == arity) {
+        if (candidate) return nullptr;
+        candidate = &m;
+      }
+    }
+    return candidate;
+  }
+  const MethodInfo *findMethodRecursive(const std::string &className, const std::string &methodKey, std::size_t arity) const {
+    std::string cur = className;
+    while (!cur.empty()) {
+      auto it = classes_.find(cur);
+      if (it == classes_.end()) return nullptr;
+      if (const MethodInfo *m = findMethodByArity(it->second, methodKey, arity)) {
+        return m;
+      }
+      cur = it->second.base;
+    }
+    return nullptr;
+  }
+  std::optional<Type> findFieldTypeRecursive(const std::string &className, const std::string &field) const {
+    std::string cur = className;
+    while (!cur.empty()) {
+      auto it = classes_.find(cur);
+      if (it == classes_.end()) return std::nullopt;
+      auto fit = it->second.fields.find(field);
+      if (fit != it->second.fields.end()) return fit->second;
+      cur = it->second.base;
+    }
+    return std::nullopt;
+  }
+  bool canAccessMethod(const MethodInfo &m, const std::string &accessorClass) const {
+    if (m.access == AccessModifier::Public) return true;
+    if (m.access == AccessModifier::Private) return accessorClass == m.owner;
+    if (accessorClass.empty()) return false;
+    return accessorClass == m.owner || isSubclassOf(accessorClass, m.owner);
+  }
+  std::string resolveMemberOperatorSymbol(const Expr &lhs, BK op) const {
+    if (lhs.k != EK::Var) return "";
+    const auto &recv = static_cast<const EVar &>(lhs);
+    const std::string className = resolveReceiverClass(recv.n);
+    if (className.empty()) return "";
+    const std::string opKey = classOperatorMethodKey(op);
+    if (opKey.empty()) return "";
+    const MethodInfo *m = findMethodRecursive(className, opKey, 1);
+    if (!m || m->isStatic) return "";
+    return m->symbol;
+  }
+  EP makeBinaryExpr(BK op, EP lhs, EP rhs, const Span &s) {
+    const std::string memberOp = resolveMemberOperatorSymbol(*lhs, op);
+    return std::make_unique<EBinary>(op, std::move(lhs), std::move(rhs), s, memberOp);
+  }
   static bool isSuperuserNamespaceReceiver(const std::string &receiver) {
-    return receiver == "su" || receiver.rfind("su.", 0) == 0;
+    return isSuperuserNamespaceSymbol(receiver);
   }
 
   EP makeFieldLoadExpr(const std::string &receiver, const std::string &field, Type fieldType, const Span &s) {
@@ -1012,9 +1276,22 @@ private:
     if (classes_.count(className)) {
       throw CompileError(classNameTok.span, "duplicate class '" + className + "'");
     }
-    classes_[className] = ClassInfo{classNameTok.span, {}, {}};
-    ClassInfo &classInfo = classes_.at(className);
+    ClassInfo classInfo;
+    classInfo.name = className;
+    classInfo.s = classNameTok.span;
     skipNl();
+    if (is(TokenKind::Id) && cur().text == "extends") {
+      ++i_;
+      Token baseTok = need(TokenKind::Id, "expected base class name after 'extends'");
+      if (!classes_.count(baseTok.text)) {
+        throw CompileError(baseTok.span, "unknown base class '" + baseTok.text + "'");
+      }
+      classInfo.base = baseTok.text;
+      skipNl();
+    }
+    classes_[className] = std::move(classInfo);
+    ClassInfo &classRef = classes_.at(className);
+
     bool braceStyle = false;
     bool endStyle = false;
     if (eat(TokenKind::LBra)) braceStyle = true;
@@ -1029,14 +1306,67 @@ private:
       skipNl();
       if (braceStyle && is(TokenKind::RBra)) break;
       if (endStyle && is(TokenKind::KwEnd)) break;
+
+      AccessModifier memberAccess = AccessModifier::Public;
+      bool accessSet = false;
+      bool methodStatic = false;
+      bool methodVirtual = false;
+      bool methodOverride = false;
+      bool methodFinal = false;
+      while (is(TokenKind::Id)) {
+        const std::string mod = cur().text;
+        if (mod == "public" || mod == "protected" || mod == "private") {
+          if (accessSet) throw CompileError(cur().span, "duplicate access modifier");
+          accessSet = true;
+          if (mod == "public") memberAccess = AccessModifier::Public;
+          else if (mod == "protected") memberAccess = AccessModifier::Protected;
+          else memberAccess = AccessModifier::Private;
+          ++i_;
+          skipNl();
+          continue;
+        }
+        if (mod == "static") {
+          if (methodStatic) throw CompileError(cur().span, "duplicate 'static' modifier");
+          methodStatic = true;
+          ++i_;
+          skipNl();
+          continue;
+        }
+        if (mod == "virtual") {
+          if (methodVirtual) throw CompileError(cur().span, "duplicate 'virtual' modifier");
+          methodVirtual = true;
+          ++i_;
+          skipNl();
+          continue;
+        }
+        if (mod == "override") {
+          if (methodOverride) throw CompileError(cur().span, "duplicate 'override' modifier");
+          methodOverride = true;
+          ++i_;
+          skipNl();
+          continue;
+        }
+        if (mod == "final") {
+          if (methodFinal) throw CompileError(cur().span, "duplicate 'final' modifier");
+          methodFinal = true;
+          ++i_;
+          skipNl();
+          continue;
+        }
+        break;
+      }
+
       if (eat(TokenKind::KwDeclare)) {
         if (seenCallable) {
           throw CompileError(t_[i_ - 1].span, "class fields must be declared before methods");
         }
+        if (methodStatic || methodVirtual || methodOverride || methodFinal) {
+          throw CompileError(t_[i_ - 1].span, "method modifiers are not allowed on class fields");
+        }
         ParsedClassField field;
         field.s = t_[i_ - 1].span;
         field.n = need(TokenKind::Id, "expected class field name").text;
-        if (classInfo.fields.count(field.n)) {
+        if (classRef.fields.count(field.n)) {
           throw CompileError(field.s, "duplicate class field '" + field.n + "'");
         }
         need(TokenKind::Colon, "class field requires explicit type");
@@ -1046,13 +1376,21 @@ private:
         } else {
           field.init = defaultValueFor(field.t, field.s);
         }
-        classInfo.fields[field.n] = field.t;
+        classRef.fields[field.n] = field.t;
         fields.push_back(std::move(field));
         needStmtEnd("expected statement terminator after class field declaration");
         continue;
       }
+
       seenCallable = true;
       Fn f;
+      f.isClassMethod = true;
+      f.classOwner = className;
+      f.methodStatic = methodStatic;
+      f.methodVirtual = methodVirtual;
+      f.methodOverride = methodOverride;
+      f.methodFinal = methodFinal;
+
       skipNl();
       while (true) {
         if (eat(TokenKind::KwInline)) {
@@ -1067,18 +1405,66 @@ private:
         }
         break;
       }
+      if (f.methodVirtual && f.methodStatic) {
+        throw CompileError(cur().span, "static methods cannot be virtual");
+      }
+
       Token nameTok;
-      if (eat(TokenKind::KwFn)) {
+      bool methodIsOperator = false;
+      std::string methodKey;
+      std::string methodDisplay;
+      const bool hasFnKeyword = eat(TokenKind::KwFn);
+      if (is(TokenKind::Id) && cur().text == "operator") {
+        Token opTok = cur();
+        ++i_;
+        skipNl();
+        if (!isOverloadableOperatorTokenKind(cur().kind)) {
+          throw CompileError(cur().span, "expected overloadable operator token after 'operator'");
+        }
+        Token symTok = cur();
+        ++i_;
+        const BK op = overloadableOperatorTokenToBK(symTok.kind, symTok.span);
+        methodIsOperator = true;
+        f.operatorKind = op;
+        methodKey = classOperatorMethodKey(op);
+        methodDisplay = operatorSymbolText(op);
+        nameTok = opTok;
+      } else if (is(TokenKind::Id) && (hasFnKeyword || lookNonNl(1).kind == TokenKind::LPar)) {
         nameTok = need(TokenKind::Id, "expected method name");
-      } else if (is(TokenKind::Id) && lookNonNl(1).kind == TokenKind::LPar) {
-        nameTok = need(TokenKind::Id, "expected method name");
+        methodKey = nameTok.text;
+        methodDisplay = nameTok.text;
       } else {
         throw CompileError(cur().span, "expected class method or constructor");
       }
-      const bool isCtor = (nameTok.text == "constructor" || nameTok.text == className);
+
+      const bool isCtor = (!methodIsOperator && (nameTok.text == "constructor" || nameTok.text == className));
       f.s = nameTok.span;
       std::unordered_map<std::string, std::string> paramClasses;
       f.p = parseParams(paramClasses);
+
+      bool ctorHasBaseInit = false;
+      std::string ctorBaseClass;
+      std::vector<EP> ctorBaseArgs;
+      if (isCtor && eat(TokenKind::Colon)) {
+        Token baseTok = need(TokenKind::Id, "expected base constructor name after ':'");
+        ctorBaseClass = baseTok.text;
+        need(TokenKind::LPar, "expected '(' after base constructor name");
+        if (!is(TokenKind::RPar)) {
+          while (true) {
+            ctorBaseArgs.push_back(expr());
+            if (!eat(TokenKind::Comma)) break;
+          }
+        }
+        need(TokenKind::RPar, "expected ')'");
+        if (classRef.base.empty()) {
+          throw CompileError(baseTok.span, "constructor init-list requires an 'extends' base class");
+        }
+        if (ctorBaseClass != classRef.base) {
+          throw CompileError(baseTok.span, "constructor init-list must target direct base '" + classRef.base + "'");
+        }
+        ctorHasBaseInit = true;
+      }
+
       if (!isCtor && eat(TokenKind::Arrow)) {
         f.ret = parseType();
       } else if (isCtor && eat(TokenKind::Arrow)) {
@@ -1096,6 +1482,18 @@ private:
       if (isCtor && f.ex) {
         throw CompileError(nameTok.span, "constructor cannot be extern");
       }
+      if (methodIsOperator) {
+        if (f.p.size() != 1) {
+          throw CompileError(nameTok.span, "operator method '" + methodDisplay + "' expects exactly 1 parameter");
+        }
+        if (f.ret == Type::Void) {
+          throw CompileError(nameTok.span, "operator method '" + methodDisplay + "' must return a value");
+        }
+        if (!f.throws.empty()) {
+          throw CompileError(nameTok.span, "operator methods do not support 'throws'");
+        }
+      }
+
       if (f.ex) {
         needStmtEnd("expected statement terminator after extern method");
       } else {
@@ -1103,7 +1501,7 @@ private:
         auto savedVarClass = varClass_;
         currentClass_ = className;
         varClass_.clear();
-        varClass_["this"] = className;
+        if (!f.methodStatic) varClass_["this"] = className;
         for (const auto &entry : paramClasses) varClass_[entry.first] = entry.second;
         f.b = block();
         currentClass_ = std::move(savedClass);
@@ -1115,11 +1513,19 @@ private:
         Fn generated;
         generated.s = f.s;
         generated.n = className;
+        generated.sourceName = className;
         generated.ret = Type::I64;
         generated.p = f.p;
         generated.throws = f.throws;
         generated.inl = f.inl;
-        EP objCtor = std::make_unique<ECall>("object_new", std::vector<EP>{}, f.s);
+        EP objCtor;
+        if (ctorHasBaseInit) {
+          objCtor = std::make_unique<ECall>(ctorBaseClass, std::move(ctorBaseArgs), f.s);
+        } else if (!classRef.base.empty()) {
+          objCtor = std::make_unique<ECall>(classRef.base, std::vector<EP>{}, f.s);
+        } else {
+          objCtor = std::make_unique<ECall>("object_new", std::vector<EP>{}, f.s);
+        }
         generated.b.push_back(
             std::make_unique<SLet>("this", std::optional<Type>(Type::I64), false, false, std::move(objCtor), f.s));
         for (const auto &field : fields) {
@@ -1129,18 +1535,63 @@ private:
         generated.b.push_back(std::make_unique<SRet>(true, std::make_unique<EVar>("this", f.s), f.s));
         ctor = std::move(generated);
       } else {
-        if (classInfo.methods.count(nameTok.text)) {
-          throw CompileError(nameTok.span, "duplicate method '" + nameTok.text + "' in class '" + className + "'");
+        std::vector<Type> paramTypes;
+        paramTypes.reserve(f.p.size());
+        for (const auto &param : f.p) paramTypes.push_back(param.t);
+        auto &overloads = classRef.methods[methodKey];
+        for (const auto &existing : overloads) {
+          if (sameParamTypes(existing.params, paramTypes)) {
+            throw CompileError(nameTok.span, "duplicate method overload '" + methodDisplay + "' in class '" + className +
+                                                 "'");
+          }
         }
-        const std::string symbol = classMethodSymbol(className, nameTok.text);
-        classInfo.methods[nameTok.text] = symbol;
+        const MethodInfo *baseMethod = nullptr;
+        if (!classRef.base.empty()) {
+          baseMethod = findMethodRecursive(classRef.base, methodKey, paramTypes.size());
+        }
+        if (f.methodOverride && !baseMethod) {
+          throw CompileError(nameTok.span, "override method '" + methodDisplay + "' has no base method to override");
+        }
+        if (baseMethod && baseMethod->isFinal) {
+          throw CompileError(nameTok.span, "cannot override final base method '" + methodDisplay + "'");
+        }
+        if (baseMethod && f.methodOverride) {
+          if (baseMethod->isStatic != f.methodStatic) {
+            throw CompileError(nameTok.span, "override method '" + methodDisplay +
+                                                 "' must keep static/instance behavior");
+          }
+          if (baseMethod->ret != f.ret) {
+            throw CompileError(nameTok.span, "override method '" + methodDisplay + "' must keep return type '" +
+                                                 typeName(baseMethod->ret) + "'");
+          }
+        }
+        MethodInfo methodInfo;
+        const std::size_t overloadIndex = overloads.size();
+        methodInfo.symbol = classMethodSymbol(className, methodKey, overloadIndex);
+        methodInfo.owner = className;
+        methodInfo.access = memberAccess;
+        methodInfo.isStatic = f.methodStatic;
+        methodInfo.isVirtual = f.methodVirtual || (baseMethod != nullptr && baseMethod->isVirtual);
+        methodInfo.isOverride = f.methodOverride || (baseMethod != nullptr && baseMethod->isVirtual);
+        methodInfo.isFinal = f.methodFinal;
+        methodInfo.params = paramTypes;
+        methodInfo.ret = f.ret;
+        overloads.push_back(methodInfo);
+
         Fn generated;
         generated.s = f.s;
-        generated.n = symbol;
+        generated.n = methodInfo.symbol;
+        generated.sourceName = methodKey;
         generated.ret = f.ret;
         generated.throws = f.throws;
         generated.inl = f.inl;
-        generated.p.push_back(Param{"this", Type::I64});
+        generated.isClassMethod = true;
+        generated.classOwner = className;
+        generated.methodStatic = methodInfo.isStatic;
+        generated.methodVirtual = methodInfo.isVirtual;
+        generated.methodOverride = methodInfo.isOverride;
+        generated.methodFinal = methodInfo.isFinal;
+        if (!methodInfo.isStatic) generated.p.push_back(Param{"this", Type::I64});
         for (auto &param : f.p) generated.p.push_back(std::move(param));
         generated.b = std::move(f.b);
         p.f.push_back(std::move(generated));
@@ -1152,8 +1603,14 @@ private:
       Fn generated;
       generated.s = classNameTok.span;
       generated.n = className;
+      generated.sourceName = className;
       generated.ret = Type::I64;
-      EP objCtor = std::make_unique<ECall>("object_new", std::vector<EP>{}, classNameTok.span);
+      EP objCtor;
+      if (!classRef.base.empty()) {
+        objCtor = std::make_unique<ECall>(classRef.base, std::vector<EP>{}, classNameTok.span);
+      } else {
+        objCtor = std::make_unique<ECall>("object_new", std::vector<EP>{}, classNameTok.span);
+      }
       generated.b.push_back(std::make_unique<SLet>("this", std::optional<Type>(Type::I64), false, false,
                                                    std::move(objCtor), classNameTok.span));
       for (const auto &field : fields) {
@@ -1188,6 +1645,7 @@ private:
       f.isCliFlag = true;
       f.cliFlagName = cliName;
       f.n = cliFlagSymbol(cliName);
+      f.sourceName = f.n;
       need(TokenKind::LPar, "expected '(' after flag name");
       if (!eat(TokenKind::RPar)) {
         throw CompileError(cur().span, "flag functions must not take parameters");
@@ -1207,6 +1665,7 @@ private:
       f.b = block();
       currentClass_ = std::move(savedClass);
       varClass_ = std::move(savedVarClass);
+      registerTopLevelOverload(f, f.s);
       return f;
     }
     while (true) {
@@ -1223,15 +1682,31 @@ private:
       break;
     }
     Token nameTok;
-    if (eat(TokenKind::KwFn)) {
+    const bool hasFnKeyword = eat(TokenKind::KwFn);
+    if (is(TokenKind::Id) && cur().text == "operator") {
+      Token opTok = cur();
+      ++i_;
+      skipNl();
+      if (!isOverloadableOperatorTokenKind(cur().kind)) {
+        throw CompileError(cur().span, "expected overloadable operator token after 'operator'");
+      }
+      Token symTok = cur();
+      ++i_;
+      const BK op = overloadableOperatorTokenToBK(symTok.kind, symTok.span);
+      f.s = opTok.span;
+      f.n = operatorOverrideSymbol(op);
+      f.sourceName = f.n;
+      f.isOperatorOverride = true;
+      f.operatorKind = op;
+      nameTok = opTok;
+    } else if (is(TokenKind::Id) && (hasFnKeyword || lookNonNl(1).kind == TokenKind::LPar)) {
       nameTok = need(TokenKind::Id, "expected function name");
-    } else if (is(TokenKind::Id) && lookNonNl(1).kind == TokenKind::LPar) {
-      nameTok = need(TokenKind::Id, "expected function name");
+      f.s = nameTok.span;
+      f.n = nameTok.text;
+      f.sourceName = f.n;
     } else {
       throw CompileError(cur().span, "expected function declaration");
     }
-    f.s = nameTok.span;
-    f.n = nameTok.text;
     std::unordered_map<std::string, std::string> paramClasses;
     f.p = parseParams(paramClasses);
     if (eat(TokenKind::Arrow)) f.ret = parseType();
@@ -1242,8 +1717,23 @@ private:
         if (!eat(TokenKind::Comma)) break;
       }
     }
+    if (f.isOperatorOverride) {
+      if (!f.operatorKind.has_value() || !isOverloadableBinaryOp(*f.operatorKind)) {
+        throw CompileError(f.s, "invalid operator override declaration");
+      }
+      if (f.p.size() != 2) {
+        throw CompileError(f.s, "operator override '" + operatorSymbolText(*f.operatorKind) + "' expects exactly 2 parameters");
+      }
+      if (f.ret == Type::Void) {
+        throw CompileError(f.s, "operator override '" + operatorSymbolText(*f.operatorKind) + "' must return a value");
+      }
+      if (!f.throws.empty()) {
+        throw CompileError(f.s, "operator overrides do not support 'throws'");
+      }
+    }
     if (f.ex) {
       needStmtEnd("expected statement terminator after extern function");
+      registerTopLevelOverload(f, f.s);
       return f;
     }
     auto savedClass = currentClass_;
@@ -1254,6 +1744,7 @@ private:
     f.b = block();
     currentClass_ = std::move(savedClass);
     varClass_ = std::move(savedVarClass);
+    registerTopLevelOverload(f, f.s);
     return f;
   }
 
@@ -1443,7 +1934,7 @@ private:
     } else {
       EP l = std::make_unique<EVar>(n.text, n.span);
       EP r = expr();
-      v = std::make_unique<EBinary>(assignOpToBinary(op, n.span), std::move(l), std::move(r), n.span);
+      v = makeBinaryExpr(assignOpToBinary(op, n.span), std::move(l), std::move(r), n.span);
     }
     if (op == TokenKind::Assign) {
       std::string assignedClass = constructorClassFromExpr(*v);
@@ -1473,23 +1964,19 @@ private:
     if (className.empty()) {
       throw CompileError(receiverTok.span, "member assignment requires a class-typed receiver");
     }
-    auto classIt = classes_.find(className);
-    if (classIt == classes_.end()) {
-      throw CompileError(receiverTok.span, "unknown class '" + className + "'");
-    }
-    auto fieldIt = classIt->second.fields.find(fieldTok.text);
-    if (fieldIt == classIt->second.fields.end()) {
+    std::optional<Type> fieldTypeOpt = findFieldTypeRecursive(className, fieldTok.text);
+    if (!fieldTypeOpt.has_value()) {
       throw CompileError(fieldTok.span, "class '" + className + "' has no field '" + fieldTok.text + "'");
     }
 
-    Type fieldType = fieldIt->second;
+    Type fieldType = *fieldTypeOpt;
     EP rhs;
     if (op == TokenKind::Assign) {
       rhs = expr();
     } else {
       EP lhs = makeFieldLoadExpr(receiverTok.text, fieldTok.text, fieldType, fieldTok.span);
       EP r = expr();
-      rhs = std::make_unique<EBinary>(assignOpToBinary(op, fieldTok.span), std::move(lhs), std::move(r), fieldTok.span);
+      rhs = makeBinaryExpr(assignOpToBinary(op, fieldTok.span), std::move(lhs), std::move(r), fieldTok.span);
     }
     SP out = makeFieldStoreStmt(receiverTok.text, fieldTok.text, fieldType, std::move(rhs), fieldTok.span);
     needStmtEnd("expected statement terminator after member assignment");
@@ -1504,7 +1991,7 @@ private:
       need(TokenKind::MinusMinus, "expected '--'");
     EP l = std::make_unique<EVar>(n.text, n.span);
     EP r = std::make_unique<EInt>(1, n.span);
-    EP v = std::make_unique<EBinary>(isInc ? BK::Add : BK::Sub, std::move(l), std::move(r), n.span);
+    EP v = makeBinaryExpr(isInc ? BK::Add : BK::Sub, std::move(l), std::move(r), n.span);
     needStmtEnd("expected statement terminator after increment/decrement");
     return std::make_unique<SAssign>(n.text, std::move(v), n.span);
   }
@@ -1591,7 +2078,7 @@ private:
     while (true) {
       if (eat(TokenKind::OrOr)) {
         EP r = logicAnd();
-        l = std::make_unique<EBinary>(BK::Or, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::Or, std::move(l), std::move(r), l->s);
         continue;
       }
       break;
@@ -1604,7 +2091,7 @@ private:
     while (true) {
       if (eat(TokenKind::AndAnd)) {
         EP r = eq();
-        l = std::make_unique<EBinary>(BK::And, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::And, std::move(l), std::move(r), l->s);
         continue;
       }
       break;
@@ -1617,12 +2104,12 @@ private:
     while (true) {
       if (eat(TokenKind::Eq)) {
         EP r = cmp();
-        l = std::make_unique<EBinary>(BK::Eq, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::Eq, std::move(l), std::move(r), l->s);
         continue;
       }
       if (eat(TokenKind::Neq)) {
         EP r = cmp();
-        l = std::make_unique<EBinary>(BK::Neq, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::Neq, std::move(l), std::move(r), l->s);
         continue;
       }
       break;
@@ -1635,22 +2122,22 @@ private:
     while (true) {
       if (eat(TokenKind::Lt)) {
         EP r = term();
-        l = std::make_unique<EBinary>(BK::Lt, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::Lt, std::move(l), std::move(r), l->s);
         continue;
       }
       if (eat(TokenKind::Lte)) {
         EP r = term();
-        l = std::make_unique<EBinary>(BK::Lte, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::Lte, std::move(l), std::move(r), l->s);
         continue;
       }
       if (eat(TokenKind::Gt)) {
         EP r = term();
-        l = std::make_unique<EBinary>(BK::Gt, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::Gt, std::move(l), std::move(r), l->s);
         continue;
       }
       if (eat(TokenKind::Gte)) {
         EP r = term();
-        l = std::make_unique<EBinary>(BK::Gte, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::Gte, std::move(l), std::move(r), l->s);
         continue;
       }
       break;
@@ -1663,12 +2150,12 @@ private:
     while (true) {
       if (eat(TokenKind::Plus)) {
         EP r = fac();
-        l = std::make_unique<EBinary>(BK::Add, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::Add, std::move(l), std::move(r), l->s);
         continue;
       }
       if (eat(TokenKind::Minus)) {
         EP r = fac();
-        l = std::make_unique<EBinary>(BK::Sub, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::Sub, std::move(l), std::move(r), l->s);
         continue;
       }
       break;
@@ -1681,17 +2168,17 @@ private:
     while (true) {
       if (eat(TokenKind::Star)) {
         EP r = unary();
-        l = std::make_unique<EBinary>(BK::Mul, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::Mul, std::move(l), std::move(r), l->s);
         continue;
       }
       if (eat(TokenKind::Slash)) {
         EP r = unary();
-        l = std::make_unique<EBinary>(BK::Div, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::Div, std::move(l), std::move(r), l->s);
         continue;
       }
       if (eat(TokenKind::Percent)) {
         EP r = unary();
-        l = std::make_unique<EBinary>(BK::Mod, std::move(l), std::move(r), l->s);
+        l = makeBinaryExpr(BK::Mod, std::move(l), std::move(r), l->s);
         continue;
       }
       break;
@@ -1703,7 +2190,7 @@ private:
     EP l = call();
     if (eat(TokenKind::Pow)) {
       EP r = unary();
-      l = std::make_unique<EBinary>(BK::Pow, std::move(l), std::move(r), l->s);
+      l = makeBinaryExpr(BK::Pow, std::move(l), std::move(r), l->s);
     }
     return l;
   }
@@ -1733,7 +2220,7 @@ private:
         }
         need(TokenKind::RPar, "expected ')'");
         if (e->k != EK::Var) throw CompileError(e->s, "callee must be function identifier");
-        std::string fnName = static_cast<EVar &>(*e).n;
+        std::string fnName = canonicalSuperuserCallName(static_cast<EVar &>(*e).n);
         e = std::make_unique<ECall>(fnName, std::move(a), e->s);
         continue;
       }
@@ -1752,26 +2239,43 @@ private:
             throw CompileError(memberTok.span, "method receiver must be an identifier");
           }
           const std::string receiver = static_cast<EVar &>(*e).n;
-          const std::string className = resolveReceiverClass(receiver);
+          bool classQualifier = false;
+          std::string className;
+          if (receiver != "this" && !varClass_.count(receiver) && classes_.count(receiver)) {
+            classQualifier = true;
+            className = receiver;
+          } else {
+            className = resolveReceiverClass(receiver);
+          }
           if (className.empty()) {
             if (!isSuperuserNamespaceReceiver(receiver)) {
               throw CompileError(memberTok.span, "method call requires a class-typed receiver");
             }
-            e = std::make_unique<ECall>(receiver + "." + memberTok.text, std::move(args), memberTok.span);
+            e = std::make_unique<ECall>(canonicalSuperuserNamespaceSymbol(receiver) + "." + memberTok.text,
+                                        std::move(args), memberTok.span);
           } else {
-            auto classIt = classes_.find(className);
-            if (classIt == classes_.end()) {
-              throw CompileError(memberTok.span, "unknown class '" + className + "'");
+            const MethodInfo *method = findMethodRecursive(className, memberTok.text, args.size());
+            if (!method) {
+              throw CompileError(memberTok.span,
+                                 "class '" + className + "' has no matching method '" + memberTok.text + "'");
             }
-            auto methodIt = classIt->second.methods.find(memberTok.text);
-            if (methodIt == classIt->second.methods.end()) {
-              throw CompileError(memberTok.span, "class '" + className + "' has no method '" + memberTok.text + "'");
+            if (!canAccessMethod(*method, currentClass_)) {
+              throw CompileError(memberTok.span, "method '" + memberTok.text + "' is not accessible in this context");
+            }
+            if (classQualifier && !method->isStatic) {
+              throw CompileError(memberTok.span, "instance method '" + memberTok.text + "' requires an object receiver");
+            }
+            if (!classQualifier && method->isStatic) {
+              throw CompileError(memberTok.span,
+                                 "static method '" + memberTok.text + "' must be called via class name");
             }
             std::vector<EP> callArgs;
-            callArgs.reserve(args.size() + 1);
-            callArgs.push_back(std::make_unique<EVar>(receiver, memberTok.span));
+            callArgs.reserve(args.size() + (classQualifier ? 0 : 1));
+            if (!classQualifier) {
+              callArgs.push_back(std::make_unique<EVar>(receiver, memberTok.span));
+            }
             for (auto &arg : args) callArgs.push_back(std::move(arg));
-            e = std::make_unique<ECall>(methodIt->second, std::move(callArgs), memberTok.span);
+            e = std::make_unique<ECall>(method->symbol, std::move(callArgs), memberTok.span);
           }
         } else {
           if (e->k != EK::Var) {
@@ -1783,17 +2287,14 @@ private:
             if (!isSuperuserNamespaceReceiver(receiver)) {
               throw CompileError(memberTok.span, "field access requires a class-typed receiver");
             }
-            e = std::make_unique<EVar>(receiver + "." + memberTok.text, memberTok.span);
+            e = std::make_unique<EVar>(canonicalSuperuserNamespaceSymbol(receiver) + "." + memberTok.text,
+                                       memberTok.span);
           } else {
-            auto classIt = classes_.find(className);
-            if (classIt == classes_.end()) {
-              throw CompileError(memberTok.span, "unknown class '" + className + "'");
-            }
-            auto fieldIt = classIt->second.fields.find(memberTok.text);
-            if (fieldIt == classIt->second.fields.end()) {
+            std::optional<Type> fieldType = findFieldTypeRecursive(className, memberTok.text);
+            if (!fieldType.has_value()) {
               throw CompileError(memberTok.span, "class '" + className + "' has no field '" + memberTok.text + "'");
             }
-            e = makeFieldLoadExpr(receiver, memberTok.text, fieldIt->second, memberTok.span);
+            e = makeFieldLoadExpr(receiver, memberTok.text, *fieldType, memberTok.span);
           }
         }
         continue;
@@ -1847,6 +2348,11 @@ struct Sig {
   std::vector<std::string> throws;
 };
 
+struct OverloadCandidate {
+  std::string symbol;
+  Sig sig;
+};
+
 class TypeCheck {
 public:
   explicit TypeCheck(Program &p, bool superuserMode = false) : p_(p), superuserMode_(superuserMode) {}
@@ -1864,6 +2370,7 @@ private:
   Program &p_;
   bool superuserMode_ = false;
   std::unordered_map<std::string, Sig> sig_;
+  std::unordered_map<std::string, std::vector<OverloadCandidate>> overloads_;
   std::vector<std::string> warnings_;
   struct Local {
     Type t = Type::I64;
@@ -1876,6 +2383,18 @@ private:
     if (a == b) return true;
     if (isNum(a) && isNum(b)) return true;
     return false;
+  }
+  static bool canSafeWiden(Type from, Type to) {
+    if (from == to) return true;
+    if (from == Type::I32 && (to == Type::I64 || to == Type::F32 || to == Type::F64)) return true;
+    if (from == Type::I64 && to == Type::F64) return true;
+    if (from == Type::F32 && to == Type::F64) return true;
+    return false;
+  }
+  static int conversionCost(Type from, Type to) {
+    if (from == to) return 0;
+    if (canSafeWiden(from, to)) return 1;
+    return -1;
   }
   static Type promote(Type a, Type b) {
     if (isFloat(a) || isFloat(b)) {
@@ -1974,7 +2493,7 @@ private:
   }
 
   void addSig(const std::string &name, const std::vector<Type> &params, Type ret, const Span &s,
-              std::vector<std::string> throws = {}) {
+              std::vector<std::string> throws = {}, const std::string &alias = "") {
     if (sig_.count(name)) {
       if (superuserMode_) {
         warn(s, "superuser mode: duplicate function '" + name + "' (latest signature wins)");
@@ -1987,6 +2506,8 @@ private:
     sg.r = ret;
     sg.throws = std::move(throws);
     sig_[name] = std::move(sg);
+    const std::string group = alias.empty() ? name : alias;
+    overloads_[group].push_back(OverloadCandidate{name, sig_[name]});
   }
 
   void addBuiltins() {
@@ -2028,6 +2549,10 @@ private:
     addSig("http_client_close", {Type::I64}, Type::Void, s);
     addSig("input_i64", {Type::Str}, Type::I64, s);
     addSig("input_f64", {Type::Str}, Type::F64, s);
+    addSig("cli_token_count", {}, Type::I64, s);
+    addSig("cli_token", {Type::I64}, Type::Str, s);
+    addSig("cli_has", {Type::Str}, Type::Bool, s);
+    addSig("cli_value", {Type::Str}, Type::Str, s);
     addSig("includes", {Type::Str, Type::Str}, Type::Bool, s);
     addSig("len", {Type::Str}, Type::I64, s);
     addSig("bytes_len", {Type::Str}, Type::I64, s);
@@ -2275,8 +2800,49 @@ private:
     for (const Fn &f : p_.f) {
       std::vector<Type> params;
       for (const Param &p : f.p) params.push_back(p.t);
-      addSig(f.n, params, f.ret, f.s, f.throws);
+      const std::string alias = f.sourceName.empty() ? f.n : f.sourceName;
+      addSig(f.n, params, f.ret, f.s, f.throws, alias);
     }
+  }
+
+  std::optional<OverloadCandidate> resolveOverload(const std::string &name, const std::vector<Type> &argTypes,
+                                                    const Span &s) {
+    auto itGroup = overloads_.find(name);
+    if (itGroup == overloads_.end()) return std::nullopt;
+    const auto &cands = itGroup->second;
+    int bestCost = std::numeric_limits<int>::max();
+    const OverloadCandidate *best = nullptr;
+    bool ambiguous = false;
+    for (const auto &cand : cands) {
+      if (cand.sig.p.size() != argTypes.size()) continue;
+      int cost = 0;
+      bool ok = true;
+      for (std::size_t i = 0; i < argTypes.size(); ++i) {
+        const int c = conversionCost(argTypes[i], cand.sig.p[i]);
+        if (c < 0) {
+          ok = false;
+          break;
+        }
+        cost += c;
+      }
+      if (!ok) continue;
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = &cand;
+        ambiguous = false;
+      } else if (cost == bestCost) {
+        ambiguous = true;
+      }
+    }
+    if (!best) return std::nullopt;
+    if (ambiguous) {
+      if (superuserMode_) {
+        warn(s, "superuser mode: ambiguous overload for '" + name + "'; keeping first candidate");
+      } else {
+        throw CompileError(s, "ambiguous overload for function '" + name + "'");
+      }
+    }
+    return *best;
   }
 
   void fn(Fn &f) {
@@ -2489,6 +3055,38 @@ private:
     case EK::Binary: {
       auto &n = static_cast<EBinary &>(e);
       Type a = expr(*n.l, l, throwsAllowed), b = expr(*n.r, l, throwsAllowed);
+      auto tryResolvedOperator = [&](const std::string &sym) -> std::optional<Type> {
+        if (sym.empty()) return std::nullopt;
+        auto itOp = sig_.find(sym);
+        if (itOp == sig_.end()) return std::nullopt;
+        const Sig &sg = itOp->second;
+        if (sg.p.size() != 2) {
+          if (superuserMode_) {
+            warn(e.s, "superuser mode: operator override '" + operatorSymbolText(n.op) +
+                           "' has invalid arity (continuing)");
+          } else {
+            throw CompileError(e.s, "operator override '" + operatorSymbolText(n.op) + "' must have 2 parameters");
+          }
+          return std::nullopt;
+        }
+        if (!can(a, sg.p[0]) || !can(b, sg.p[1])) return std::nullopt;
+        n.overrideFn = sym;
+        return sg.r;
+      };
+
+      if (!n.overrideFn.empty()) {
+        if (auto memberRt = tryResolvedOperator(n.overrideFn)) {
+          return mark(*memberRt);
+        }
+        n.overrideFn.clear();
+      }
+
+      const std::string opOverride = operatorOverrideSymbol(n.op);
+      if (!opOverride.empty()) {
+        if (auto freeRt = tryResolvedOperator(opOverride)) {
+          return mark(*freeRt);
+        }
+      }
       switch (n.op) {
       case BK::Add:
       case BK::Sub:
@@ -2536,14 +3134,15 @@ private:
     }
     case EK::Call: {
       auto &n = static_cast<ECall &>(e);
-      if (n.f == "superuser") {
+      const std::string fnName = canonicalSuperuserCallName(n.f);
+      if (fnName == "superuser") {
         if (!n.a.empty()) failVoid(e.s, "function 'superuser' expects 0 args");
         return mark(Type::Void);
       }
-      if (n.f.rfind("su.", 0) == 0 && !superuserMode_) {
+      if (fnName.rfind("su.", 0) == 0 && !superuserMode_) {
         throw CompileError(e.s, "Not privileged: call superuser() to enable developer superuser mode");
       }
-      if (n.f == "input") {
+      if (fnName == "input") {
         if (n.a.empty()) return mark(Type::Str);
         if (n.a.size() == 1) {
           Type at = expr(*n.a[0], l, throwsAllowed);
@@ -2555,7 +3154,7 @@ private:
         failVoid(e.s, "function 'input' expects 0 or 1 args");
         return mark(Type::Str);
       }
-      if (n.f == "input_i64") {
+      if (fnName == "input_i64") {
         if (n.a.empty()) return mark(Type::I64);
         if (n.a.size() == 1) {
           Type at = expr(*n.a[0], l, throwsAllowed);
@@ -2567,7 +3166,7 @@ private:
         failVoid(e.s, "function 'input_i64' expects 0 or 1 args");
         return mark(Type::I64);
       }
-      if (n.f == "input_f64") {
+      if (fnName == "input_f64") {
         if (n.a.empty()) return mark(Type::F64);
         if (n.a.size() == 1) {
           Type at = expr(*n.a[0], l, throwsAllowed);
@@ -2579,7 +3178,7 @@ private:
         failVoid(e.s, "function 'input_f64' expects 0 or 1 args");
         return mark(Type::F64);
       }
-      if (n.f == "print" || n.f == "println") {
+      if (fnName == "print" || fnName == "println") {
         if (n.a.size() != 1) {
           failVoid(e.s, "function '" + n.f + "' expects 1 arg");
           return mark(Type::Void);
@@ -2590,7 +3189,7 @@ private:
         }
         return mark(Type::Void);
       }
-      if (n.f == "formatOutput" || n.f == "FormatOutput") {
+      if (fnName == "formatOutput" || fnName == "FormatOutput") {
         if (n.a.size() != 1) {
           failVoid(e.s, "function '" + n.f + "' expects 1 arg");
           return mark(Type::Str);
@@ -2601,7 +3200,7 @@ private:
         }
         return mark(Type::Str);
       }
-      if (n.f == "max" || n.f == "min") {
+      if (fnName == "max" || fnName == "min") {
         if (n.a.size() != 2) {
           failVoid(e.s, "function '" + n.f + "' expects 2 args");
           return mark(Type::I64);
@@ -2614,7 +3213,7 @@ private:
         }
         return mark(promote(a0, a1));
       }
-      if (n.f == "abs") {
+      if (fnName == "abs") {
         if (n.a.size() != 1) {
           failVoid(e.s, "function '" + n.f + "' expects 1 arg");
           return mark(Type::I64);
@@ -2626,7 +3225,7 @@ private:
         }
         return mark(a0);
       }
-      if (n.f == "clamp") {
+      if (fnName == "clamp") {
         if (n.a.size() != 3) {
           failVoid(e.s, "function '" + n.f + "' expects 3 args");
           return mark(Type::I64);
@@ -2640,11 +3239,11 @@ private:
         }
         return mark(promote(promote(a0, a1), a2));
       }
-      if (n.f == ".format") {
+      if (fnName == ".format") {
         if (!n.a.empty()) failVoid(e.s, "function '" + n.f + "' expects 0 args");
         return mark(Type::Void);
       }
-      if (n.f == "spawn") {
+      if (fnName == "spawn") {
         if (n.a.size() != 1) {
           failVoid(e.s, "function 'spawn' expects 1 arg");
           return mark(Type::I64);
@@ -2654,25 +3253,39 @@ private:
           return mark(Type::I64);
         }
         auto &target = static_cast<ECall &>(*n.a[0]);
-        auto itTarget = sig_.find(target.f);
-        if (itTarget == sig_.end()) {
-          failVoid(target.s, "unknown function '" + target.f + "'");
-          return mark(Type::I64);
-        }
+        const std::string targetFnName = canonicalSuperuserCallName(target.f);
         if (!target.a.empty()) {
           failVoid(target.s, "spawn target must not take arguments");
         }
-        if (!itTarget->second.p.empty()) {
+        std::optional<OverloadCandidate> targetCand = resolveOverload(targetFnName, {}, target.s);
+        if (!targetCand.has_value()) {
+          auto itTarget = sig_.find(targetFnName);
+          if (itTarget == sig_.end()) {
+            failVoid(target.s, "unknown function '" + target.f + "'");
+            return mark(Type::I64);
+          }
+          targetCand = OverloadCandidate{targetFnName, itTarget->second};
+        }
+        target.f = targetCand->symbol;
+        if (!targetCand->sig.p.empty()) {
           failVoid(target.s, "spawn target must have zero parameters");
         }
-        if (itTarget->second.r != Type::Void) {
+        if (targetCand->sig.r != Type::Void) {
           failVoid(target.s, "spawn target must return void");
         }
         return mark(Type::I64);
       }
-      auto it = sig_.find(n.f);
-      if (it == sig_.end()) return failType(e.s, "unknown function '" + n.f + "'", Type::I64);
-      const Sig &sg = it->second;
+      std::vector<Type> argTypes;
+      argTypes.reserve(n.a.size());
+      for (auto &arg : n.a) argTypes.push_back(expr(*arg, l, throwsAllowed));
+      std::optional<OverloadCandidate> cand = resolveOverload(fnName, argTypes, e.s);
+      if (!cand.has_value()) {
+        auto it = sig_.find(fnName);
+        if (it == sig_.end()) return failType(e.s, "unknown function '" + n.f + "'", Type::I64);
+        cand = OverloadCandidate{fnName, it->second};
+      }
+      n.f = cand->symbol;
+      const Sig &sg = cand->sig;
       for (const std::string &errName : sg.throws) {
         if (!throwsAllowed.count(errName)) {
           if (superuserMode_) {
@@ -2688,7 +3301,7 @@ private:
       }
       for (std::size_t i = 0; i < n.a.size(); ++i) {
         if (i >= sg.p.size()) break;
-        Type at = expr(*n.a[i], l, throwsAllowed), pt = sg.p[i];
+        Type at = argTypes[i], pt = sg.p[i];
         if (!can(at, pt))
           failVoid(n.a[i]->s, "arg " + std::to_string(i + 1) + " cannot convert '" + typeName(at) +
                                  "' to '" + typeName(pt) + "'");
@@ -2713,7 +3326,7 @@ static EP cloneE(const Expr &e) {
   }
   case EK::Binary: {
     auto &n = static_cast<const EBinary &>(e);
-    return std::make_unique<EBinary>(n.op, cloneE(*n.l), cloneE(*n.r), e.s);
+    return std::make_unique<EBinary>(n.op, cloneE(*n.l), cloneE(*n.r), e.s, n.overrideFn);
   }
   case EK::Call: {
     auto &n = static_cast<const ECall &>(e);
@@ -2744,7 +3357,7 @@ static EP substE(const Expr &e, const std::unordered_map<std::string, const Expr
   }
   case EK::Binary: {
     auto &n = static_cast<const EBinary &>(e);
-    return std::make_unique<EBinary>(n.op, substE(*n.l, subs), substE(*n.r, subs), e.s);
+    return std::make_unique<EBinary>(n.op, substE(*n.l, subs), substE(*n.r, subs), e.s, n.overrideFn);
   }
   case EK::Call: {
     auto &n = static_cast<const ECall &>(e);
@@ -2761,7 +3374,7 @@ static EP substE(const Expr &e, const std::unordered_map<std::string, const Expr
 static bool hasCall(const Expr &e, const std::string &name) {
   if (e.k == EK::Call) {
     auto &n = static_cast<const ECall &>(e);
-    if (n.f == name) return true;
+    if (canonicalSuperuserCallName(n.f) == canonicalSuperuserCallName(name)) return true;
     for (const EP &a : n.a)
       if (hasCall(*a, name)) return true;
     return false;
@@ -3531,6 +4144,7 @@ static std::optional<int64_t> evalConstI64Expr(const Expr &expr) {
   }
   case EK::Binary: {
     const auto &b = static_cast<const EBinary &>(expr);
+    if (!b.overrideFn.empty()) return std::nullopt;
     auto l = evalConstI64Expr(*b.l);
     auto r = evalConstI64Expr(*b.r);
     if (!l || !r) return std::nullopt;
@@ -3572,6 +4186,7 @@ static std::optional<AffineI64Const> affineI64ConstExpr(const Expr &expr, const 
   }
   case EK::Binary: {
     const auto &bin = static_cast<const EBinary &>(expr);
+    if (!bin.overrideFn.empty()) return std::nullopt;
     if (bin.op == BK::Add || bin.op == BK::Sub) {
       auto l = affineI64ConstExpr(*bin.l, loopVar);
       auto r = affineI64ConstExpr(*bin.r, loopVar);
@@ -3639,6 +4254,7 @@ static std::optional<Linear2I64Const> linear2I64ConstExpr(const Expr &expr, cons
   }
   case EK::Binary: {
     const auto &b = static_cast<const EBinary &>(expr);
+    if (!b.overrideFn.empty()) return std::nullopt;
     if (b.op == BK::Add || b.op == BK::Sub) {
       auto l = linear2I64ConstExpr(*b.l, xVar, yVar);
       auto r = linear2I64ConstExpr(*b.r, xVar, yVar);
@@ -3967,6 +4583,7 @@ static std::optional<int64_t> evalConstI64WithEnv(
   }
   case EK::Binary: {
     const auto &b = static_cast<const EBinary &>(expr);
+    if (!b.overrideFn.empty()) return std::nullopt;
     auto l = evalConstI64WithEnv(*b.l, env);
     auto r = evalConstI64WithEnv(*b.r, env);
     if (!l || !r) return std::nullopt;
@@ -4001,6 +4618,7 @@ static bool exprTrivialNoSideEffects(const Expr &e) {
     return exprTrivialNoSideEffects(*static_cast<const EUnary &>(e).x);
   case EK::Binary: {
     const auto &n = static_cast<const EBinary &>(e);
+    if (!n.overrideFn.empty()) return false;
     if (n.op == BK::Div || n.op == BK::Mod || n.op == BK::Pow) return false;
     return exprTrivialNoSideEffects(*n.l) && exprTrivialNoSideEffects(*n.r);
   }
@@ -4212,6 +4830,7 @@ static bool propagateLocalI64Consts(std::vector<SP> &b) {
 }
 
 static bool foldBin(EBinary &n, EP &e) {
+  if (!n.overrideFn.empty()) return false;
   auto li = litI(*n.l);
   auto ri = litI(*n.r);
   auto lf = litF(*n.l);
@@ -4929,8 +5548,10 @@ class EmitC {
 public:
   EmitC(const Program &p, std::unordered_set<std::string> inl, bool superuserMode = false,
         bool superuserStartEnabled = false,
-        std::vector<std::string> activeCliFlags = {})
-      : p_(p), inl_(std::move(inl)), superuserMode_(superuserMode), superuserStartEnabled_(superuserStartEnabled) {
+        std::vector<std::string> activeCliFlags = {},
+        std::vector<std::string> cliCustomTokens = {})
+      : p_(p), inl_(std::move(inl)), superuserMode_(superuserMode), superuserStartEnabled_(superuserStartEnabled),
+        cliCustomTokens_(std::move(cliCustomTokens)) {
     std::unordered_map<std::string, std::string> flagSymbols;
     for (const Fn &f : p_.f) {
       if (!f.isCliFlag) continue;
@@ -5106,6 +5727,7 @@ private:
   bool superuserDebugToStderr_ = false;
   bool superuserIrDumpRequested_ = false;
   std::vector<std::string> activeCliFlagCalls_;
+  std::vector<std::string> cliCustomTokens_;
   std::ostringstream o_;
   const Fn *entry_ = nullptr;
   std::string entryError_;
@@ -6035,6 +6657,47 @@ private:
     o_ << "}\n";
     o_ << "static LS_THREAD_LOCAL ls_bool ls_format_cli_marker = 0;\n";
     o_ << "static inline void ls_mark_format_mode(void) { ls_format_cli_marker = 1; }\n";
+    if (cliCustomTokens_.empty()) {
+      o_ << "static const char *ls_cli_tokens[1] = {\"\"};\n";
+      o_ << "static const int64_t ls_cli_token_count = 0;\n";
+    } else {
+      o_ << "static const char *ls_cli_tokens[" << static_cast<unsigned long long>(cliCustomTokens_.size()) << "] = {";
+      for (std::size_t i = 0; i < cliCustomTokens_.size(); ++i) {
+        if (i) o_ << ", ";
+        o_ << cStrLit(cliCustomTokens_[i]);
+      }
+      o_ << "};\n";
+      o_ << "static const int64_t ls_cli_token_count = "
+         << static_cast<long long>(cliCustomTokens_.size()) << "LL;\n";
+    }
+    o_ << "static inline int64_t cli_token_count(void) { return ls_cli_token_count; }\n";
+    o_ << "static inline const char *cli_token(int64_t idx) {\n";
+    o_ << "  if (idx < 0 || idx >= ls_cli_token_count) return \"\";\n";
+    o_ << "  return ls_cli_tokens[(size_t)idx];\n";
+    o_ << "}\n";
+    o_ << "static inline ls_bool cli_has(const char *flag) {\n";
+    o_ << "  if (!flag || !*flag) return 0;\n";
+    o_ << "  for (int64_t i = 0; i < ls_cli_token_count; ++i) {\n";
+    o_ << "    if (strcmp(ls_cli_tokens[(size_t)i], flag) == 0) return 1;\n";
+    o_ << "  }\n";
+    o_ << "  return 0;\n";
+    o_ << "}\n";
+    o_ << "static inline const char *cli_value(const char *flag) {\n";
+    o_ << "  if (!flag || !*flag) return \"\";\n";
+    o_ << "  const size_t n = strlen(flag);\n";
+    o_ << "  for (int64_t i = 0; i < ls_cli_token_count; ++i) {\n";
+    o_ << "    const char *tok = ls_cli_tokens[(size_t)i];\n";
+    o_ << "    if (strcmp(tok, flag) == 0) {\n";
+    o_ << "      if (i + 1 < ls_cli_token_count) {\n";
+    o_ << "        const char *next = ls_cli_tokens[(size_t)(i + 1)];\n";
+    o_ << "        if (strcmp(next, \"[\") != 0 && strcmp(next, \"]\") != 0 && next[0] != '-') return next;\n";
+    o_ << "      }\n";
+    o_ << "      return \"\";\n";
+    o_ << "    }\n";
+    o_ << "    if (strncmp(tok, flag, n) == 0 && tok[n] == '=') return tok + n + 1;\n";
+    o_ << "  }\n";
+    o_ << "  return \"\";\n";
+    o_ << "}\n";
     o_ << "#define LS_SCRATCH_SLOTS 16\n";
     o_ << "static LS_THREAD_LOCAL char *ls_scratch_bufs[LS_SCRATCH_SLOTS];\n";
     o_ << "static LS_THREAD_LOCAL size_t ls_scratch_caps[LS_SCRATCH_SLOTS];\n";
@@ -8933,6 +9596,9 @@ private:
     }
     case EK::Binary: {
       auto &n = static_cast<const EBinary &>(x);
+      if (!n.overrideFn.empty()) {
+        return cFnName(n.overrideFn) + "(" + e(*n.l) + ", " + e(*n.r) + ")";
+      }
       if (n.op == BK::Pow) return "ls_pow(" + e(*n.l) + ", " + e(*n.r) + ")";
       if ((n.op == BK::Eq || n.op == BK::Neq) && n.l->typed && n.r->typed && n.l->inf == Type::Str &&
           n.r->inf == Type::Str) {
@@ -8943,28 +9609,29 @@ private:
     }
     case EK::Call: {
       auto &n = static_cast<const ECall &>(x);
-      if (n.f == ".format") {
+      const std::string fnName = canonicalSuperuserCallName(n.f);
+      if (fnName == ".format") {
         if (!n.a.empty()) {
           throw CompileError(x.s, "internal format emit arity error");
         }
         return "ls_mark_format_mode()";
       }
-      if (n.f == "input") {
+      if (fnName == "input") {
         if (n.a.empty()) return "input()";
         if (n.a.size() == 1) return "input_prompt(" + e(*n.a[0]) + ")";
         throw CompileError(x.s, "internal input emit arity error");
       }
-      if (n.f == "input_i64") {
+      if (fnName == "input_i64") {
         if (n.a.empty()) return "input_i64()";
         if (n.a.size() == 1) return "input_i64_prompt(" + e(*n.a[0]) + ")";
         throw CompileError(x.s, "internal input_i64 emit arity error");
       }
-      if (n.f == "input_f64") {
+      if (fnName == "input_f64") {
         if (n.a.empty()) return "input_f64()";
         if (n.a.size() == 1) return "input_f64_prompt(" + e(*n.a[0]) + ")";
         throw CompileError(x.s, "internal input_f64 emit arity error");
       }
-      if (n.f == ".stateSpeed" || n.f == "stateSpeed") {
+      if (fnName == ".stateSpeed" || fnName == "stateSpeed") {
         if (!n.a.empty()) {
           throw CompileError(x.s, "internal stateSpeed emit arity error");
         }
@@ -8973,101 +9640,101 @@ private:
         }
         return "ls_state_speed(" + stateSpeedVar_ + ")";
       }
-      if (n.f == ".freeConsole" || n.f == "FreeConsole") {
+      if (fnName == ".freeConsole" || fnName == "FreeConsole") {
         if (!n.a.empty()) {
           throw CompileError(x.s, "internal freeConsole emit arity error");
         }
         return "ls_detach_console()";
       }
-      if (n.f == "max") {
+      if (fnName == "max") {
         if (n.a.size() != 2) {
           throw CompileError(x.s, "internal max emit arity error");
         }
         return "ls_generic_max(" + e(*n.a[0]) + ", " + e(*n.a[1]) + ")";
       }
-      if (n.f == "min") {
+      if (fnName == "min") {
         if (n.a.size() != 2) {
           throw CompileError(x.s, "internal min emit arity error");
         }
         return "ls_generic_min(" + e(*n.a[0]) + ", " + e(*n.a[1]) + ")";
       }
-      if (n.f == "abs") {
+      if (fnName == "abs") {
         if (n.a.size() != 1) {
           throw CompileError(x.s, "internal abs emit arity error");
         }
         return "ls_generic_abs(" + e(*n.a[0]) + ")";
       }
-      if (n.f == "clamp") {
+      if (fnName == "clamp") {
         if (n.a.size() != 3) {
           throw CompileError(x.s, "internal clamp emit arity error");
         }
         return "ls_generic_clamp(" + e(*n.a[0]) + ", " + e(*n.a[1]) + ", " + e(*n.a[2]) + ")";
       }
-      if (n.f == "superuser") {
+      if (fnName == "superuser") {
         if (!n.a.empty()) {
           throw CompileError(x.s, "internal superuser emit arity error");
         }
         return "superuser()";
       }
-      if (n.f == "su.trace.on") {
+      if (fnName == "su.trace.on") {
         if (!n.a.empty()) {
           throw CompileError(x.s, "internal su.trace.on emit arity error");
         }
         return "ls_su_trace_on()";
       }
-      if (n.f == "su.trace.off") {
+      if (fnName == "su.trace.off") {
         if (!n.a.empty()) {
           throw CompileError(x.s, "internal su.trace.off emit arity error");
         }
         return "ls_su_trace_off()";
       }
-      if (n.f == "su.capabilities") {
+      if (fnName == "su.capabilities") {
         if (!n.a.empty()) {
           throw CompileError(x.s, "internal su.capabilities emit arity error");
         }
         return "ls_su_capabilities()";
       }
-      if (n.f == "su.memory.inspect") {
+      if (fnName == "su.memory.inspect") {
         if (!n.a.empty()) {
           throw CompileError(x.s, "internal su.memory.inspect emit arity error");
         }
         return "ls_su_memory_inspect()";
       }
-      if (n.f == "su.limit.set") {
+      if (fnName == "su.limit.set") {
         if (n.a.size() != 2) {
           throw CompileError(x.s, "internal su.limit.set emit arity error");
         }
         return "ls_su_limit_set(" + e(*n.a[0]) + ", " + e(*n.a[1]) + ")";
       }
-      if (n.f == "su.compiler.inspect") {
+      if (fnName == "su.compiler.inspect") {
         if (!n.a.empty()) {
           throw CompileError(x.s, "internal su.compiler.inspect emit arity error");
         }
         return "ls_su_compiler_inspect()";
       }
-      if (n.f == "su.ir.dump") {
+      if (fnName == "su.ir.dump") {
         if (!n.a.empty()) {
           throw CompileError(x.s, "internal su.ir.dump emit arity error");
         }
         return "ls_su_ir_dump()";
       }
-      if (n.f == "su.debug.hook") {
+      if (fnName == "su.debug.hook") {
         if (n.a.size() != 1) {
           throw CompileError(x.s, "internal su.debug.hook emit arity error");
         }
         return "ls_su_debug_hook(" + e(*n.a[0]) + ")";
       }
-      if (n.f == "spawn") {
+      if (fnName == "spawn") {
         if (n.a.size() != 1 || n.a[0]->k != EK::Call) {
           throw CompileError(x.s, "internal spawn emit error");
         }
         auto &target = static_cast<const ECall &>(*n.a[0]);
-        return "ls_spawn(" + cFnName(target.f) + ")";
+        return "ls_spawn(" + cFnName(canonicalSuperuserCallName(target.f)) + ")";
       }
-      if (ultraMinimalRuntime_ && (n.f == "print_str" || n.f == "println_str") && n.a.size() == 1 &&
+      if (ultraMinimalRuntime_ && (fnName == "print_str" || fnName == "println_str") && n.a.size() == 1 &&
           n.a[0]->k == EK::Str) {
         std::string lit = static_cast<const EString &>(*n.a[0]).v;
-        if (n.f == "println_str") lit.push_back('\n');
+        if (fnName == "println_str") lit.push_back('\n');
         return "ls_emit_bytes(" + cStrLit(lit) + ", " + std::to_string(static_cast<unsigned long long>(lit.size())) +
                "u)";
       }
@@ -9082,7 +9749,7 @@ private:
           a << e(*n.a[i]);
         }
       }
-      return cFnName(n.f) + "(" + a.str() + ")";
+      return cFnName(fnName) + "(" + a.str() + ")";
     }
     }
     throw CompileError(x.s, "internal emit expr error");
@@ -9766,10 +10433,14 @@ struct Opt {
   int superuserVerbosity = 3;
   bool keepC = false;
   bool maxSpeed = false;
+  bool pgoGenerate = false;
+  std::filesystem::path pgoUseDir;
+  std::filesystem::path boltUseFdata;
   int passes = 12;
   bool infoOnly = false;
   std::vector<std::string> infoMessages;
   std::vector<std::string> cliFlags;
+  std::vector<std::string> cliCustomTokens;
 };
 
 // Version policy:
@@ -9808,6 +10479,24 @@ static std::string cliFlagBodyFromArg(const std::string &arg) {
   if (arg.rfind("--", 0) != 0) return "";
   return arg.substr(2);
 }
+static bool isCliGroupOpenToken(const std::string &tok) { return tok == "["; }
+static bool isCliGroupCloseToken(const std::string &tok) { return tok == "]"; }
+static bool isCliGroupToken(const std::string &tok) { return isCliGroupOpenToken(tok) || isCliGroupCloseToken(tok); }
+static bool isPotentialShortOptionToken(const std::string &tok) {
+  return tok.size() >= 2 && tok[0] == '-' && tok[1] != '-';
+}
+static bool isPotentialLongOptionToken(const std::string &tok) {
+  return tok.size() >= 3 && tok.rfind("--", 0) == 0;
+}
+static bool isPotentialOptionToken(const std::string &tok) {
+  return isPotentialShortOptionToken(tok) || isPotentialLongOptionToken(tok);
+}
+static bool isPotentialOptionValueToken(const std::string &tok) {
+  if (tok.empty()) return false;
+  if (isCliGroupToken(tok)) return false;
+  if (isPotentialOptionToken(tok)) return false;
+  return true;
+}
 
 static void usage() {
   std::cerr << "LineScript compiler\n";
@@ -9825,6 +10514,9 @@ static void usage() {
   std::cerr << "  --passes <n>    greedy optimization passes (default: 12)\n";
   std::cerr << "  -O4             primary max-speed profile (preferred)\n";
   std::cerr << "  --max-speed     compatibility alias for -O4\n";
+  std::cerr << "  --pgo-generate  build instrumented binary for profile capture (max-speed pipeline)\n";
+  std::cerr << "  --pgo-use <dir> use collected PGO profiles from <dir> (max-speed pipeline)\n";
+  std::cerr << "  --bolt-use <fdata> apply BOLT profile data file when llvm-bolt is available\n";
   std::cerr << "  --keep-c        keep generated C when --build\n";
   std::cerr << "  --LineScript    print LineScript version\n";
   std::cerr << "  --super-speed   reserved tuning flag\n";
@@ -9879,6 +10571,18 @@ static Opt parseOpt(int argc, char **argv) {
     validateCompilerCommand(o.cc);
     return o;
   }
+  int cliGroupDepth = 0;
+  auto pushCustomToken = [&](const std::string &tok) {
+    if (isCliGroupOpenToken(tok)) {
+      ++cliGroupDepth;
+    } else if (isCliGroupCloseToken(tok)) {
+      if (cliGroupDepth == 0) {
+        throw std::runtime_error("unexpected ']' in custom CLI token stream");
+      }
+      --cliGroupDepth;
+    }
+    o.cliCustomTokens.push_back(tok);
+  };
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--help") {
@@ -9909,6 +10613,8 @@ static Opt parseOpt(int argc, char **argv) {
     } else if (a == "--max-sped") {
       o.infoMessages.push_back("hurga durga doo! max sped activated!");
       o.cliFlags.push_back(a);
+    } else if (isCliGroupToken(a)) {
+      pushCustomToken(a);
     } else if (a == "--check") {
       o.check = true;
     } else if (a == "--build") {
@@ -9919,6 +10625,20 @@ static Opt parseOpt(int argc, char **argv) {
     } else if (a == "--keep-c") {
       o.keepC = true;
     } else if (a == "-O4" || a == "--max-speed") {
+      o.maxSpeed = true;
+      if (o.passes < 32) o.passes = 32;
+    } else if (a == "--pgo-generate") {
+      o.pgoGenerate = true;
+      o.maxSpeed = true;
+      if (o.passes < 32) o.passes = 32;
+    } else if (a == "--pgo-use") {
+      if (i + 1 >= argc) throw std::runtime_error("missing value for --pgo-use");
+      o.pgoUseDir = argv[++i];
+      o.maxSpeed = true;
+      if (o.passes < 32) o.passes = 32;
+    } else if (a == "--bolt-use") {
+      if (i + 1 >= argc) throw std::runtime_error("missing value for --bolt-use");
+      o.boltUseFdata = argv[++i];
       o.maxSpeed = true;
       if (o.passes < 32) o.passes = 32;
     } else if (a == "--cc") {
@@ -9942,8 +10662,28 @@ static Opt parseOpt(int argc, char **argv) {
       if (i + 1 >= argc) throw std::runtime_error("missing value for -o");
       o.out = argv[++i];
     } else if (!a.empty() && a[0] == '-') {
-      if (a.rfind("--", 0) == 0) {
-        o.cliFlags.push_back(a);
+      if (isPotentialLongOptionToken(a)) {
+        pushCustomToken(a);
+        const bool hasInlineValue = (a.find('=') != std::string::npos);
+        if (cliGroupDepth == 0 && !hasInlineValue) {
+          o.cliFlags.push_back(a);
+        }
+        if (!hasInlineValue && i + 1 < argc) {
+          const std::string next = argv[i + 1];
+          if (isPotentialOptionValueToken(next)) {
+            pushCustomToken(next);
+            ++i;
+          }
+        }
+      } else if (isPotentialShortOptionToken(a)) {
+        pushCustomToken(a);
+        if (i + 1 < argc) {
+          const std::string next = argv[i + 1];
+          if (isPotentialOptionValueToken(next)) {
+            pushCustomToken(next);
+            ++i;
+          }
+        }
       } else {
         throw std::runtime_error("unknown option: " + a);
       }
@@ -9954,6 +10694,9 @@ static Opt parseOpt(int argc, char **argv) {
       }
       o.inputs.push_back(std::move(in));
     }
+  }
+  if (cliGroupDepth != 0) {
+    throw std::runtime_error("unclosed '[' in custom CLI token stream");
   }
   if (o.repl && (o.check || o.build || o.run)) {
     throw std::runtime_error("--repl/--shell cannot be combined with --check/--build/--run");
@@ -9974,6 +10717,24 @@ static Opt parseOpt(int argc, char **argv) {
   validateCompilerCommand(o.cc);
   if (!isValidBackend(o.backend)) {
     throw std::runtime_error("invalid --backend value (expected auto|c|asm): " + o.backend);
+  }
+  if (o.pgoGenerate && !o.build) {
+    throw std::runtime_error("--pgo-generate requires --build or --run");
+  }
+  if (!o.pgoUseDir.empty() && !o.build) {
+    throw std::runtime_error("--pgo-use requires --build or --run");
+  }
+  if (!o.boltUseFdata.empty() && !o.build) {
+    throw std::runtime_error("--bolt-use requires --build or --run");
+  }
+  if (o.pgoGenerate && !o.pgoUseDir.empty()) {
+    throw std::runtime_error("--pgo-generate and --pgo-use cannot be used together");
+  }
+  if (!o.pgoUseDir.empty() && o.pgoUseDir.string().find(' ') != std::string::npos) {
+    throw std::runtime_error("--pgo-use path must not contain spaces");
+  }
+  if (!o.boltUseFdata.empty() && o.boltUseFdata.string().find(' ') != std::string::npos) {
+    throw std::runtime_error("--bolt-use path must not contain spaces");
   }
   if (o.check && (o.build || o.run)) {
     throw std::runtime_error("--check cannot be combined with --build/--run");
@@ -10063,6 +10824,41 @@ static std::string trimCopy(const std::string &s) {
   return s.substr(b, e - b);
 }
 
+static bool applyBoltProfileIfAvailable(const std::filesystem::path &bin, const std::filesystem::path &fdata,
+                                        bool cleanOutputMode, bool superuserMode) {
+  if (fdata.empty()) return true;
+  if (!std::filesystem::exists(fdata)) {
+    throw std::runtime_error("--bolt-use profile file not found: " + fdata.string());
+  }
+  std::filesystem::path bolted = bin;
+  bolted += ".bolt";
+  const std::vector<std::string> tools = {"llvm-bolt", "bolt"};
+  for (const auto &tool : tools) {
+    std::ostringstream cmd;
+    cmd << qCmd(tool) << " " << q(bin) << " -o " << q(bolted) << " -data=" << q(fdata)
+        << " -reorder-blocks=ext-tsp -reorder-functions=hfsort+ -split-functions=3 -split-all-cold -icf=1";
+    if (superuserMode) superuserLogV(3, "exec (bolt): " + cmd.str());
+    const int rc = std::system(cmd.str().c_str());
+    if (rc == 0 && std::filesystem::exists(bolted)) {
+      std::error_code ec;
+      std::filesystem::remove(bin, ec);
+      ec.clear();
+      std::filesystem::rename(bolted, bin, ec);
+      if (!ec) {
+        if (!cleanOutputMode) {
+          std::cout << "BOLT: applied profile with " << tool << '\n';
+        }
+        return true;
+      }
+      std::filesystem::remove(bolted, ec);
+    }
+  }
+  if (!cleanOutputMode) {
+    std::cout << "BOLT: skipped (tool not available or optimization failed)\n";
+  }
+  return false;
+}
+
 static int replBlockDeltaLine(const std::string &line) {
   int delta = 0;
   bool inStr = false;
@@ -10133,12 +10929,15 @@ static bool replIsSuperuserToggleCommand(const std::string &snippet) {
 static bool replParseVerbosityCommand(const std::string &snippet, int &levelOut) {
   std::string t = lowerCopy(trimCopy(snippet));
   if (!t.empty() && t.back() == ';') t.pop_back();
-  constexpr const char *kPrefix = "su.verbosity.";
-  if (t.rfind(kPrefix, 0) != 0) return false;
-  const std::string tail = t.substr(std::char_traits<char>::length(kPrefix));
-  if (tail.size() != 1 || tail[0] < '1' || tail[0] > '5') return false;
-  levelOut = tail[0] - '0';
-  return true;
+  constexpr const char *kPrefixes[] = {"su.verbosity.", "superuser.verbosity."};
+  for (const char *prefix : kPrefixes) {
+    if (t.rfind(prefix, 0) != 0) continue;
+    const std::string tail = t.substr(std::char_traits<char>::length(prefix));
+    if (tail.size() != 1 || tail[0] < '1' || tail[0] > '5') return false;
+    levelOut = tail[0] - '0';
+    return true;
+  }
+  return false;
 }
 
 static bool replIsIdentStart(char c) {
@@ -10292,8 +11091,8 @@ static int runRepl(const Opt &o, const std::string &argv0) {
         std::cout << "  :help   show this help\n";
         std::cout << "  :reset  clear interactive session state\n";
         std::cout << "  :whoami print current shell identity\n";
-        std::cout << "  su.verbosity.<1-5>  set superuser verbosity (requires superuser mode)\n";
-        std::cout << "  su.help  show privileged superuser commands (requires superuser mode)\n";
+        std::cout << "  su.verbosity.<1-5> / superuser.verbosity.<1-5>  set superuser verbosity\n";
+        std::cout << "  su.help / superuser.help  show privileged superuser commands\n";
         std::cout << "  :exit   quit shell\n";
         continue;
       }
@@ -10309,17 +11108,18 @@ static int runRepl(const Opt &o, const std::string &argv0) {
         std::cout << (superuserSession ? "superuser" : baseUser) << '\n';
         continue;
       }
-      if (lowerCopy(t) == "su.help") {
+      const std::string lowered = lowerCopy(t);
+      if (lowered == "su.help" || lowered == "superuser.help") {
         if (!superuserSession) {
           std::cerr << "Not privileged: enable superuser() first\n";
         } else {
           std::cout << "superuser REPL commands:\n";
           std::cout << "  superuser()          toggle superuser mode on/off\n";
-          std::cout << "  su.verbosity.1..5    set compiler/runtime log detail\n";
-          std::cout << "  su.help              show this privileged help\n";
+          std::cout << "  su.verbosity.1..5 or superuser.verbosity.1..5\n";
+          std::cout << "  su.help or superuser.help\n";
           std::cout << "superuser language APIs:\n";
-          std::cout << "  su.trace.on(), su.trace.off()\n";
-          std::cout << "  su.capabilities(), su.memory.inspect(), su.compiler.inspect()\n";
+          std::cout << "  su.trace.on()/off() and superuser.trace.on()/off()\n";
+          std::cout << "  su.capabilities()/memory.inspect()/compiler.inspect() (superuser.* aliases too)\n";
           std::cout << "  su.limit.set(step_limit, mem_limit), su.ir.dump(), su.debug.hook(tag)\n";
         }
         continue;
@@ -10354,7 +11154,8 @@ static int runRepl(const Opt &o, const std::string &argv0) {
       superuserSession = !superuserSession;
       if (superuserSession) {
         superuserVerbosity = 3;
-        std::cerr << "Warning: superuser() enabled. LineScript safety checks are relaxed for developer diagnostics.\n";
+        std::cerr << "Warning: superuser() enabled. LineScript error safety guards are disabled; input will be "
+                     "attempted even if it is bad, malformed, or otherwise invalid.\n";
         std::cerr << "[superuser][repl] session enabled\n";
       } else {
         std::cerr << "[superuser][repl] session disabled; back to normal user\n";
@@ -10448,6 +11249,8 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   validateCompilerCommand(o.cc);
   validatePathForShell(c, "generated C path");
   validatePathForShell(bin, "output binary path");
+  if (!o.pgoUseDir.empty()) validatePathForShell(o.pgoUseDir, "pgo profile path");
+  if (!o.boltUseFdata.empty()) validatePathForShell(o.boltUseFdata, "bolt profile path");
   if (superuserMode) {
     superuserLogV(2, "build mode: generating C at " + c.string());
     superuserLogV(2, "target binary: " + bin.string());
@@ -10465,6 +11268,31 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   const bool msvcLike =
       ccNorm == "cl" || ccNorm == "cl.exe" || ccNorm.find("\\cl.exe") != std::string::npos ||
       ccNorm.find("/cl.exe") != std::string::npos || ccNorm.find("clang-cl") != std::string::npos;
+  std::string pgoFlags;
+  if (o.pgoGenerate) {
+    if (clangLike) {
+      pgoFlags += " -fprofile-instr-generate";
+    } else if (gccLike) {
+      pgoFlags += " -fprofile-generate";
+    } else if (!cleanOutputMode) {
+      std::cout << "PGO: skipped --pgo-generate (requires clang/gcc-compatible toolchain)\n";
+    }
+  } else if (!o.pgoUseDir.empty()) {
+    if (!std::filesystem::exists(o.pgoUseDir)) {
+      throw std::runtime_error("--pgo-use path not found: " + o.pgoUseDir.string());
+    }
+    if (clangLike) {
+      std::filesystem::path profdata = o.pgoUseDir / "default.profdata";
+      if (!std::filesystem::exists(profdata)) {
+        throw std::runtime_error("--pgo-use requires " + profdata.string() + " for clang profile use");
+      }
+      pgoFlags += " -fprofile-instr-use=" + profdata.string();
+    } else if (gccLike) {
+      pgoFlags += " -fprofile-use=" + o.pgoUseDir.string();
+    } else if (!cleanOutputMode) {
+      std::cout << "PGO: skipped --pgo-use (requires clang/gcc-compatible toolchain)\n";
+    }
+  }
 
   std::vector<std::string> baseFlagSets;
 #if defined(_WIN32)
@@ -10589,9 +11417,10 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   std::string usedBackend = "c";
   std::vector<std::string> cppFallbackCommands = {"clang++", "g++"};
   for (const std::string &flags : flagSets) {
+    const std::string activeFlags = trimCopy(flags + pgoFlags);
     if (tryAsmBackend) {
-      const std::string asmFlags = flagsForAsmEmit(flags);
-      const std::string asmLinkFlags = flagsForAsmLink(flags);
+      const std::string asmFlags = flagsForAsmEmit(activeFlags);
+      const std::string asmLinkFlags = flagsForAsmLink(activeFlags);
       if (superuserMode) {
         superuserLogV(3, "trying ASM emit flags: " + asmFlags);
       }
@@ -10606,7 +11435,7 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
         if (superuserMode) superuserLogV(4, "exec (asm link): " + asmLink.str());
         rc = std::system(asmLink.str().c_str());
         if (rc == 0) {
-          usedFlags = flags;
+          usedFlags = activeFlags;
           usedBackend = "asm";
           if (superuserMode) superuserLogV(2, "ASM backend selected");
           break;
@@ -10615,11 +11444,11 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
       for (const std::string &cppCmdName : cppFallbackCommands) {
         if (superuserMode) superuserLogV(2, "ASM path failed; trying C++ fallback compiler: " + cppCmdName);
         std::ostringstream cppCmd;
-        cppCmd << qCmd(cppCmdName) << " " << flags << " " << q(c) << " -o " << q(bin) << linkSuffix;
+        cppCmd << qCmd(cppCmdName) << " " << activeFlags << " " << q(c) << " -o " << q(bin) << linkSuffix;
         if (superuserMode) superuserLogV(4, "exec (cpp fallback): " + cppCmd.str());
         rc = std::system(cppCmd.str().c_str());
         if (rc == 0) {
-          usedFlags = flags;
+          usedFlags = activeFlags;
           usedBackend = "cpp-fallback";
           if (superuserMode) superuserLogV(2, "C++ fallback backend selected: " + cppCmdName);
           break;
@@ -10628,12 +11457,12 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
       if (rc == 0) break;
     }
     std::ostringstream cmd;
-    cmd << qCmd(o.cc) << " " << flags << " " << q(c) << " -o " << q(bin) << linkSuffix;
-    if (superuserMode) superuserLogV(3, "trying C backend flags: " + flags);
+    cmd << qCmd(o.cc) << " " << activeFlags << " " << q(c) << " -o " << q(bin) << linkSuffix;
+    if (superuserMode) superuserLogV(3, "trying C backend flags: " + activeFlags);
     if (superuserMode) superuserLogV(4, "exec (c backend): " + cmd.str());
     rc = std::system(cmd.str().c_str());
     if (rc == 0) {
-      usedFlags = flags;
+      usedFlags = activeFlags;
       usedBackend = "c";
       if (superuserMode) superuserLogV(2, "C backend selected");
       break;
@@ -10655,6 +11484,9 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   if (tryAsmBackend) {
     std::error_code ec;
     std::filesystem::remove(asmTmp, ec);
+  }
+  if (!o.boltUseFdata.empty()) {
+    (void)applyBoltProfileIfAvailable(bin, o.boltUseFdata, cleanOutputMode, superuserMode);
   }
   if (!cleanOutputMode) {
     std::cout << "Backend: " << usedBackend << '\n';
@@ -10792,7 +11624,8 @@ int main(int argc, char **argv) {
     const bool cleanOutputModeEarly = ls::hasFormatMarkerProgram(p);
     ls::setSuperuserLogging(superuserMode, cleanOutputModeEarly, o.superuserVerbosity);
     if (superuserCallDetected) {
-      std::cerr << "Warning: superuser() enabled. LineScript safety checks are relaxed for developer diagnostics.\n"
+      std::cerr << "Warning: superuser() enabled. LineScript error safety guards are disabled; input will be "
+                   "attempted even if it is bad, malformed, or otherwise invalid.\n"
                 << std::flush;
     }
     if (superuserMode) {
@@ -10862,7 +11695,7 @@ int main(int argc, char **argv) {
 
     stage = "emit/build";
     if (superuserMode) ls::superuserLogV(2, "stage: emit/build begin");
-    ls::EmitC ec(p, ls::inlineSet(p), superuserMode, o.superuserSession, activeCliFlags);
+    ls::EmitC ec(p, ls::inlineSet(p), superuserMode, o.superuserSession, activeCliFlags, o.cliCustomTokens);
     if ((o.build || o.run) && !ec.hasEntry()) {
       throw std::runtime_error(ec.entryError());
     }

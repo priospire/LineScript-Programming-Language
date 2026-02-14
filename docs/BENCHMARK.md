@@ -80,3 +80,21 @@ Stress cases:
 - `tests/stress/stress_task_spawn_reuse.lsc`
 - `tests/stress/stress_http_burst_roundtrip.lsc`
 - `tests/stress/stress_edge_guarded_ranges.lsc`
+
+## Gauntlet Domination Methodology
+
+For `tests/run_zig_comparison.ps1` and `tests/run_zig_comparison.sh`:
+- default warmup runs: `3`
+- default measured runs: `9`
+- per-test domination margin: `2.0%` lead over the best non-LineScript median
+- blocking categories: all except edge (`edge_case`) when edge is configured as non-blocking
+- edge cases are always reported; they can be made blocking by toggling runner settings
+- per-test domination gate can be enforced with `RequirePerTestDomination=true`
+
+Example (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\run_zig_comparison.ps1 `
+  -WarmupRuns 3 -MeasuredRuns 9 -ConfidenceMarginPercent 2.0 `
+  -RequirePerTestDomination 1 -IncludeEdgeNonBlocking 1
+```

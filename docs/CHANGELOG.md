@@ -1,5 +1,59 @@
 # LineScript Changelog
 
+## 2026-02-14 (Documentation Sync)
+
+### Changed
+- refreshed documentation cross-links so OOP syntax is discoverable from root docs:
+- added `docs/OOP.md` link in `README.md` documentation map.
+- expanded OOP syntax examples in `README.md` and `docs/LANGUAGE_GUIDE.md` with:
+- `extends`
+- `public` / `protected` / `private`
+- `static` / `virtual` / `override` / `final`
+- constructor init-list base calls (`constructor(...) : Base(...)`).
+- updated `docs/SYNTAX.md` and `docs/API_REFERENCE.md` with current class/OOP language forms.
+- updated `docs/IDE_SETUP.md` to document current VSCode diagnostics defaults:
+- `linescript.compilerDiagnosticsOnly`
+- `linescript.hintsEnabled`
+- `linescript.styleHintsEnabled`
+- local compiler pinning via `linescript.lscPath`.
+
+## 2026-02-14 (Roadmap Phase Update)
+
+### Added
+- advanced class model support:
+- single inheritance with `extends`
+- access modifiers (`public`, `protected`, `private`)
+- method modifiers (`static`, `virtual`, `override`, `final`)
+- constructor base init-list calls (`constructor(...) : Base(...) do ... end`)
+- method overload declarations (duplicate-signature protection)
+- top-level overload resolution with exact-match then safe-widening selection.
+- runtime/compile-fail regression cases for inheritance/modifier behavior:
+- `tests/cases/runtime/class_inheritance_modifiers.lsc`
+- `tests/cases/runtime/function_overload_resolution.lsc`
+- `tests/cases/compile_fail/class_bad_override.lsc`
+- `tests/cases/compile_fail/class_override_final.lsc`
+- `tests/cases/compile_fail/class_static_instance_call.lsc`
+- max-speed pipeline flags:
+- `--pgo-generate`
+- `--pgo-use <profile-dir>`
+- `--bolt-use <fdata>`
+
+### Changed
+- class member/field lookup now walks base classes.
+- access and override/final validation now enforced in parser/type flow.
+- `tests/run_zig_comparison.ps1` defaults now follow stricter gauntlet settings:
+- `WarmupRuns=3`
+- `MeasuredRuns=9`
+- `ConfidenceMarginPercent=2.0`
+- per-test domination gate with blocking/non-blocking edge handling.
+- `tests/run_zig_comparison.sh` now mirrors domination-margin controls.
+- benchmark docs updated with domination methodology and confidence gate details.
+
+### Tests
+- deterministic suite (`tests/run_tests.sh`) pass: `164/164`.
+- targeted runtime checks for inheritance/modifier and overload behavior passed.
+- targeted compile-fail checks for override/final/static-call constraints passed.
+
 ## 2026-02-14 (LineScript v1.4.6)
 
 ### Added
@@ -14,6 +68,14 @@
 - universal LSP template
 - JetBrains, Notepad++, Neovim, Helix, Sublime Text, Vim (coc.nvim), Emacs (eglot), and Zed.
 - REPL privileged helper command: `su.help` (superuser-only) to list shell controls and privileged APIs.
+- C++-style class operator methods:
+- `fn operator <op>(rhs: T) -> T do ... end`
+- runtime regression tests:
+- `tests/cases/runtime/operator_override_basic.lsc`
+- `tests/cases/runtime/operator_override_member_precedence.lsc`
+- compile-fail regression tests:
+- `tests/cases/compile_fail/operator_override_bad_arity.lsc`
+- `tests/cases/compile_fail/operator_method_bad_arity.lsc`
 
 ### Changed
 - bumped runtime/compiler version output to `1.4.6` (`--LineScript` now reports `LineScript version 1.4.6`).
@@ -28,6 +90,15 @@
 - level 1 stays concise.
 - level 5 now logs source stats and token-by-token lexer output in addition to full compile command tracing.
 - superuser mode guardrail relaxation was expanded in type-check paths so more LineScript safety checks downgrade to warnings while backend compiler/toolchain validation continues.
+- operator overload resolution order is now:
+- class member operator overload
+- free/global operator overload
+- built-in operator fallback
+- custom CLI parser now supports strict grouped token streams for advanced layouts (balanced `[` / `]` required).
+- grouped/custom parser options no longer emit undefined-flag warnings during normal script execution.
+- deterministic harness parity:
+- `tests/run_tests.ps1` and `tests/run_tests.sh` both cover grouped CLI parser and operator overload cases.
+- packaging scripts now enforce latest-only dist output by cleaning old `LineScript-*` bundles and zips first.
 - updated VSCode grammar precedence so `fn` / `inline` keep modifier highlighting before `main()`.
 - updated syntax coloring so:
 - `main` remains red and non-bold.
@@ -45,6 +116,8 @@
 - added REPL regressions:
 - `repl_superuser_help_not_privileged`
 - `repl_superuser_help_privileged`
+- deterministic suite pass: `226/226`.
+- deterministic stress suite pass: `21/21`.
 
 ## 2026-02-13 (LineScript v1.4.5)
 

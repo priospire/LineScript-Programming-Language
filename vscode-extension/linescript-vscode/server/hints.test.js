@@ -216,6 +216,27 @@ function hasCode(diags, code) {
 
 {
   const src = [
+    "superuser()",
+    "su.capabilites()"
+  ].join("\n");
+  const diags = collect(src);
+  assert.ok(!hasCode(diags, "ls-duplicate-declare"), "superuser call should not be treated as a duplicate declaration");
+  assert.ok(hasCode(diags, "ls-unknown-su-command"), "misspelled superuser command should produce a dedicated warning");
+}
+
+{
+  const src = [
+    "superuser()",
+    "su.capabilities()",
+    "superuser.capabilities()"
+  ].join("\n");
+  const diags = collect(src);
+  assert.ok(!hasCode(diags, "ls-unknown-su-command"), "valid superuser commands should not be flagged unknown");
+  assert.ok(!hasCode(diags, "ls-duplicate-declare"), "superuser calls should never look like duplicate declarations");
+}
+
+{
+  const src = [
     "class Counter do",
     "  constructor(start: i64, label: str) do",
     "    this.value = start",
@@ -240,6 +261,25 @@ function hasCode(diags, code) {
   const diags = collect(src);
   assert.ok(!hasCode(diags, "ls-undeclared-var"), "function-local declared variables should stay in scope");
   assert.ok(!hasCode(diags, "ls-undeclared-assign"), "function-local declared assignment should not be flagged");
+}
+
+{
+  const src = [
+    "class Base do",
+    "  public virtual fn value() -> i64 do",
+    "    return 1",
+    "  end",
+    "end",
+    "class Derived extends Base do",
+    "  public override final fn value() -> i64 do",
+    "    return 2",
+    "  end",
+    "end"
+  ].join("\n");
+  const diags = collect(src);
+  assert.ok(!hasCode(diags, "ls-undeclared-var"), "OOP modifiers must not be treated as variables");
+  assert.ok(!hasCode(diags, "ls-unknown-statement"), "OOP modifier method declarations must be recognized statements");
+  assert.ok(!hasCode(diags, "ls-unknown-function"), "overridden method declarations must not be treated as unknown calls");
 }
 
 {

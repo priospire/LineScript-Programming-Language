@@ -38,7 +38,18 @@ if (-not $SkipBuild) {
 }
 
 $dateTag = Get-Date -Format "yyyyMMdd"
-$bundleDir = Join-Path (Join-Path $root $OutDir) "LineScript-win64-$dateTag"
+$outRoot = Join-Path $root $OutDir
+if (-not (Test-Path $outRoot)) {
+  New-Item -ItemType Directory -Path $outRoot | Out-Null
+}
+Get-ChildItem $outRoot -Directory -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -like "LineScript-*" } |
+  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem $outRoot -File -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -like "LineScript-*.zip" } |
+  Remove-Item -Force -ErrorAction SilentlyContinue
+
+$bundleDir = Join-Path $outRoot "LineScript-win64-$dateTag"
 $zipPath = "$bundleDir.zip"
 
 if (Test-Path $bundleDir) { Remove-Item -Recurse -Force $bundleDir }

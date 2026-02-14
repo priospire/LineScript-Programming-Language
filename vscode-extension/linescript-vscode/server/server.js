@@ -27,8 +27,11 @@ const defaultSettings = {
   lscPath: "",
   backendCompiler: "",
   maxSpeedDiagnostics: false,
+  compilerDiagnosticsOnly: true,
   checkOnType: true,
   checkOnSave: true,
+  validationDelayMinMs: 2000,
+  validationDelayMaxMs: 5000,
   checkTimeoutMs: 8000,
   extraCheckArgs: [],
   hintsEnabled: true,
@@ -39,6 +42,7 @@ const defaultSettings = {
 let hasConfigurationCapability = false;
 const documentSettings = new Map();
 const validationTimers = new Map();
+const validationGenerations = new Map();
 
 const keywordDocs = new Map([
   ["declare", "Declare a variable. Example: declare x: i64 = 10"],
@@ -52,6 +56,14 @@ const keywordDocs = new Map([
   ["for", "Range loop: for i in a..b [step s] do ... end"],
   ["parallel", "Parallel loop modifier: parallel for ..."],
   ["class", "Class declaration (C++-style OOP)."],
+  ["extends", "Single inheritance: class Child extends Parent do ... end"],
+  ["public", "Access modifier for class members."],
+  ["protected", "Protected access modifier for class members."],
+  ["private", "Private access modifier for class members."],
+  ["static", "Static class method modifier (call via ClassName.method())."],
+  ["virtual", "Virtual method modifier for override-capable base methods."],
+  ["override", "Override modifier for derived class methods."],
+  ["final", "Final method modifier (prevents further overrides)."],
   ["throws", "Function throws contract declaration."],
   ["do", "Block opener for LineScript block syntax."],
   ["end", "Block terminator for LineScript block syntax."]
@@ -181,6 +193,14 @@ const completionItems = [
     "do",
     "end",
     "class",
+    "extends",
+    "public",
+    "protected",
+    "private",
+    "static",
+    "virtual",
+    "override",
+    "final",
     "throws",
     "break",
     "continue",
@@ -242,6 +262,31 @@ const completionItems = [
 
 function getDefaultLscPath() {
   return os.platform() === "win32" ? "lsc.exe" : "lsc";
+}
+
+function resolveCompilerPath(configuredPath, filePath) {
+  const configured = String(configuredPath || "").trim();
+  if (configured) return configured;
+
+  const exeName = os.platform() === "win32" ? "lsc.exe" : "lsc";
+  if (filePath && typeof filePath === "string") {
+    let dir = path.dirname(filePath);
+    const seen = new Set();
+    while (dir && !seen.has(dir)) {
+      seen.add(dir);
+      const candidate = path.join(dir, exeName);
+      if (fs.existsSync(candidate)) return candidate;
+      if (os.platform() === "win32") {
+        const alt = path.join(dir, "lsc");
+        if (fs.existsSync(alt)) return alt;
+      }
+      const parent = path.dirname(dir);
+      if (!parent || parent === dir) break;
+      dir = parent;
+    }
+  }
+
+  return getDefaultLscPath();
 }
 
 connection.onInitialize((params) => {
@@ -338,7 +383,7 @@ connection.onDefinition((params) => {
   const escaped = escapeRegex(token);
 
   const patterns = [
-    new RegExp(`^\\s*(?:inline\\s+|extern\\s+|fn\\s+|func\\s+)*${escaped}\\s*\\(`),
+    new RegExp(`^\\s*${FUNC_PREFIX_RE}${escaped}\\s*\\(`),
     new RegExp(`^\\s*flag\\s+${escaped}\\s*\\(`),
     new RegExp(`^\\s*class\\s+${escaped}\\b`)
   ];
@@ -406,7 +451,7 @@ connection.onDocumentSymbol((params) => {
       continue;
     }
 
-    m = line.match(/^\s*(?:inline\s+|extern\s+|fn\s+|func\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+    m = line.match(new RegExp("^\\s*" + FUNC_PREFIX_RE + "([A-Za-z_][A-Za-z0-9_]*)\\s*\\("));
     if (m) {
       const n = m[1];
       const c = line.indexOf(n);
@@ -488,15 +533,45 @@ connection.onDocumentFormatting((params) => {
 
 function scheduleValidate(document, forceCompiler) {
   const key = document.uri;
+  const generation = (validationGenerations.get(key) || 0) + 1;
+  validationGenerations.set(key, generation);
   const old = validationTimers.get(key);
   if (old) clearTimeout(old);
-  const timer = setTimeout(() => {
-    validationTimers.delete(key);
-    validateTextDocument(document, !!forceCompiler).catch((err) => {
-      connection.console.error("LineScript validate error: " + (err && err.message ? err.message : String(err)));
+  const clampDelay = (v, fallback) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    if (n < 0) return 0;
+    return Math.floor(n);
+  };
+  getDocumentSettings(document.uri)
+    .then((settings) => {
+      if (validationGenerations.get(key) !== generation) return;
+      const merged = Object.assign({}, defaultSettings, settings || {});
+      const minDelay = clampDelay(merged.validationDelayMinMs, 2000);
+      const maxDelay = clampDelay(merged.validationDelayMaxMs, 5000);
+      const lo = Math.min(minDelay, maxDelay);
+      const hi = Math.max(minDelay, maxDelay);
+      const delay = lo + Math.floor(Math.random() * (hi - lo + 1));
+      const timer = setTimeout(() => {
+        if (validationGenerations.get(key) !== generation) return;
+        validationTimers.delete(key);
+        validateTextDocument(document, !!forceCompiler).catch((err) => {
+          connection.console.error("LineScript validate error: " + (err && err.message ? err.message : String(err)));
+        });
+      }, delay);
+      validationTimers.set(key, timer);
+    })
+    .catch(() => {
+      if (validationGenerations.get(key) !== generation) return;
+      const timer = setTimeout(() => {
+        if (validationGenerations.get(key) !== generation) return;
+        validationTimers.delete(key);
+        validateTextDocument(document, !!forceCompiler).catch((err) => {
+          connection.console.error("LineScript validate error: " + (err && err.message ? err.message : String(err)));
+        });
+      }, 2500);
+      validationTimers.set(key, timer);
     });
-  }, 220);
-  validationTimers.set(key, timer);
 }
 
 async function getDocumentSettings(resource) {
@@ -512,21 +587,314 @@ async function getDocumentSettings(resource) {
   return result;
 }
 
-function parseLineColDiagnostics(output, severity) {
+function isWordChar(ch) {
+  return /[A-Za-z0-9_]/.test(ch || "");
+}
+
+function normalizeDiagMessage(msg) {
+  return String(msg || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function severityRank(severity) {
+  switch (severity) {
+    case DiagnosticSeverity.Error:
+      return 4;
+    case DiagnosticSeverity.Warning:
+      return 3;
+    case DiagnosticSeverity.Information:
+      return 2;
+    case DiagnosticSeverity.Hint:
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function rangesOverlap(a, b) {
+  if (!a || !b || !a.start || !a.end || !b.start || !b.end) return false;
+  if (a.start.line !== b.start.line) return false;
+  return a.start.character < b.end.character && b.start.character < a.end.character;
+}
+
+function findTokenRangeNearest(lineText, token, preferredCol) {
+  if (!lineText || !token) return null;
+  const candidates = [];
+  let idx = lineText.indexOf(token);
+  while (idx >= 0) {
+    const before = idx > 0 ? lineText[idx - 1] : "";
+    const after = idx + token.length < lineText.length ? lineText[idx + token.length] : "";
+    const leftOk = !isWordChar(before);
+    const rightOk = !isWordChar(after);
+    if (leftOk && rightOk) {
+      candidates.push({ start: idx, end: idx + token.length });
+    }
+    idx = lineText.indexOf(token, idx + 1);
+  }
+  if (candidates.length === 0) return null;
+  let best = candidates[0];
+  let bestDist = Math.abs(best.start - preferredCol);
+  for (let i = 1; i < candidates.length; i += 1) {
+    const c = candidates[i];
+    const dist = Math.abs(c.start - preferredCol);
+    if (dist < bestDist) {
+      best = c;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+function findMatchingParenInLine(lineText, openIdx) {
+  if (openIdx < 0 || openIdx >= lineText.length || lineText[openIdx] !== "(") return -1;
+  let depth = 0;
+  let inString = false;
+  let escaping = false;
+  for (let i = openIdx; i < lineText.length; i += 1) {
+    const ch = lineText[i];
+    if (inString) {
+      if (escaping) {
+        escaping = false;
+      } else if (ch === "\\") {
+        escaping = true;
+      } else if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === "(") depth += 1;
+    if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return i;
+      if (depth < 0) return -1;
+    }
+  }
+  return -1;
+}
+
+function findCallRangeNearest(lineText, fnName, preferredCol) {
+  const tok = findTokenRangeNearest(lineText, fnName, preferredCol);
+  if (!tok) return null;
+  let i = tok.end;
+  while (i < lineText.length && /\s/.test(lineText[i])) i += 1;
+  if (i >= lineText.length || lineText[i] !== "(") return tok;
+  const closeIdx = findMatchingParenInLine(lineText, i);
+  if (closeIdx < 0) return tok;
+  return { start: tok.start, end: closeIdx + 1 };
+}
+
+function clampLineRange(lineText, start, end) {
+  const len = lineText.length;
+  if (len <= 0) return { start: 0, end: 0 };
+  let s = Number.isFinite(start) ? Math.floor(start) : 0;
+  let e = Number.isFinite(end) ? Math.floor(end) : (s + 1);
+  if (s < 0) s = 0;
+  if (s >= len) s = len - 1;
+  if (e <= s) e = s + 1;
+  if (e > len) e = len;
+  return { start: s, end: e };
+}
+
+function expandNearestTokenRange(lineText, preferredCol) {
+  if (!lineText || lineText.length === 0) return { start: 0, end: 0 };
+  const len = lineText.length;
+  let col = Number.isFinite(preferredCol) ? Math.floor(preferredCol) : 0;
+  if (col < 0) col = 0;
+  if (col >= len) col = len - 1;
+
+  if (isWordChar(lineText[col])) {
+    let s = col;
+    let e = col + 1;
+    while (s > 0 && isWordChar(lineText[s - 1])) s -= 1;
+    while (e < len && isWordChar(lineText[e])) e += 1;
+    return clampLineRange(lineText, s, e);
+  }
+
+  let right = col;
+  while (right < len && !isWordChar(lineText[right])) right += 1;
+  let left = col;
+  while (left >= 0 && !isWordChar(lineText[left])) left -= 1;
+
+  if (right < len && (left < 0 || (right - col) <= (col - left))) {
+    let s = right;
+    let e = right + 1;
+    while (s > 0 && isWordChar(lineText[s - 1])) s -= 1;
+    while (e < len && isWordChar(lineText[e])) e += 1;
+    return clampLineRange(lineText, s, e);
+  }
+  if (left >= 0) {
+    let s = left;
+    let e = left + 1;
+    while (s > 0 && isWordChar(lineText[s - 1])) s -= 1;
+    while (e < len && isWordChar(lineText[e])) e += 1;
+    return clampLineRange(lineText, s, e);
+  }
+
+  const firstNonWs = lineText.search(/\S/);
+  if (firstNonWs >= 0) {
+    return clampLineRange(lineText, firstNonWs, len);
+  }
+  return clampLineRange(lineText, col, col + 1);
+}
+
+function narrowCompilerRange(message, lineText, col) {
+  const fallback = expandNearestTokenRange(lineText, col);
+  if (!lineText) return fallback;
+
+  const fnMatch = message.match(/\bfunction\s+'([^']+)'/i);
+  if (fnMatch) {
+    const callRange = findCallRangeNearest(lineText, fnMatch[1], col);
+    if (callRange) return clampLineRange(lineText, callRange.start, callRange.end);
+  }
+
+  const varMatch = message.match(/\bvariable\s+'([^']+)'/i);
+  if (varMatch) {
+    const tokenRange = findTokenRangeNearest(lineText, varMatch[1], col);
+    if (tokenRange) return clampLineRange(lineText, tokenRange.start, tokenRange.end);
+  }
+
+  const classFieldMatch = message.match(/\bclass\s+'([^']+)'.*?\b(field|method)\s+'([^']+)'/i);
+  if (classFieldMatch) {
+    const memberRange = findTokenRangeNearest(lineText, classFieldMatch[3], col);
+    if (memberRange) return clampLineRange(lineText, memberRange.start, memberRange.end);
+  }
+
+  const quotedTokenMatch = message.match(/'([^']+)'/);
+  if (quotedTokenMatch) {
+    const tokenRange = findTokenRangeNearest(lineText, quotedTokenMatch[1], col);
+    if (tokenRange) return clampLineRange(lineText, tokenRange.start, tokenRange.end);
+  }
+
+  return fallback;
+}
+
+function diagnosticSubjectKey(d) {
+  const msg = String(d && d.message ? d.message : "");
+  const fn = msg.match(/\bfunction\s+'([^']+)'/i);
+  if (fn) return "fn:" + fn[1].toLowerCase();
+  const variable = msg.match(/\bvariable\s+'([^']+)'/i);
+  if (variable) return "var:" + variable[1].toLowerCase();
+  const field = msg.match(/\b(field|method)\s+'([^']+)'/i);
+  if (field) return field[1].toLowerCase() + ":" + field[2].toLowerCase();
+  const quoted = msg.match(/'([^']+)'/);
+  if (quoted) return "tok:" + quoted[1].toLowerCase();
+  return "";
+}
+
+function mergeDiagnosticsWithPrecedence(diagnostics) {
+  const valid = (diagnostics || []).filter((d) => d && d.range && d.range.start && d.range.end);
+  if (valid.length <= 1) return valid;
+  const cmpDiag = (a, b) => {
+    const sevCmp = severityRank(b.severity) - severityRank(a.severity);
+    if (sevCmp !== 0) return sevCmp;
+    const lineCmp = a.range.start.line - b.range.start.line;
+    if (lineCmp !== 0) return lineCmp;
+    const colCmp = a.range.start.character - b.range.start.character;
+    if (colCmp !== 0) return colCmp;
+    return normalizeDiagMessage(a.message).localeCompare(normalizeDiagMessage(b.message));
+  };
+
+  const errorLines = new Set(
+    valid
+      .filter((d) => d.severity === DiagnosticSeverity.Error)
+      .map((d) => d.range.start.line)
+  );
+
+  // User rule: if a line has any error, suppress warnings/info/hints on that line.
+  const errorOnly = valid.filter((d) => {
+    if (d.severity === DiagnosticSeverity.Error) return true;
+    return !errorLines.has(d.range.start.line);
+  });
+
+  const kept = [];
+  for (const d of errorOnly.sort(cmpDiag)) {
+    const dSev = severityRank(d.severity);
+    const dLine = d.range.start.line;
+
+    if (dSev < severityRank(DiagnosticSeverity.Error) && d.code === "ls-unknown-statement" && errorLines.has(dLine)) {
+      continue;
+    }
+
+    let drop = false;
+    const dSubject = diagnosticSubjectKey(d);
+    const dMsg = normalizeDiagMessage(d.message);
+    const competingError = errorOnly.find(
+      (e) =>
+        e.severity === DiagnosticSeverity.Error &&
+        (rangesOverlap(e.range, d.range) ||
+          (dSubject && diagnosticSubjectKey(e) && diagnosticSubjectKey(e) === dSubject) ||
+          Math.abs(e.range.start.line - d.range.start.line) <= 1)
+    );
+    if (d.severity !== DiagnosticSeverity.Error && competingError) {
+      continue;
+    }
+
+    for (const k of kept) {
+      if (k.range.start.line !== dLine) continue;
+      const kSev = severityRank(k.severity);
+      const overlap = rangesOverlap(k.range, d.range);
+      const kSubject = diagnosticSubjectKey(k);
+      const sameSubject = !!dSubject && !!kSubject && dSubject === kSubject;
+      const sameCode = (k.code || "") === (d.code || "");
+      const sameMsg = normalizeDiagMessage(k.message) === dMsg;
+      const competing = overlap || sameSubject || sameCode || sameMsg;
+      if (!competing) continue;
+
+      if (kSev > dSev) {
+        drop = true;
+        break;
+      }
+      if (kSev === dSev && (sameMsg || sameCode || overlap)) {
+        drop = true;
+        break;
+      }
+    }
+
+    if (!drop) kept.push(d);
+  }
+
+  return kept.sort((a, b) => {
+    const lineCmp = a.range.start.line - b.range.start.line;
+    if (lineCmp !== 0) return lineCmp;
+    const colCmp = a.range.start.character - b.range.start.character;
+    if (colCmp !== 0) return colCmp;
+    return severityRank(b.severity) - severityRank(a.severity);
+  });
+}
+
+function parseCompilerDiagnostics(output, document) {
   const diagnostics = [];
-  const re = /line\s+(\d+)\s*,\s*col\s+(\d+)\s*:\s*([^\r\n]+)/g;
+  const re = /(?:^|\r?\n)\s*(?:(warning|warn|info|information|hint|error)\s*:\s*)?line\s+(\d+)\s*,\s*col\s+(\d+)\s*:\s*([^\r\n]+)/gi;
+  const lines = document ? document.getText().split(/\r?\n/) : [];
   let m;
   while ((m = re.exec(output)) !== null) {
-    const line = Math.max(0, Number(m[1]) - 1);
-    const col = Math.max(0, Number(m[2]) - 1);
-    const msg = String(m[3]).trim();
+    const sevRaw = String(m[1] || "").toLowerCase();
+    const line = Math.max(0, Number(m[2]) - 1);
+    const col = Math.max(0, Number(m[3]) - 1);
+    const msg = String(m[4]).trim();
+    const lineText = line >= 0 && line < lines.length ? lines[line] : "";
+    const narrowed = narrowCompilerRange(msg, lineText, col);
+    let severity = DiagnosticSeverity.Error;
+    if (sevRaw === "warning" || sevRaw === "warn") {
+      severity = DiagnosticSeverity.Warning;
+    } else if (sevRaw === "info" || sevRaw === "information") {
+      severity = DiagnosticSeverity.Information;
+    } else if (sevRaw === "hint") {
+      severity = DiagnosticSeverity.Hint;
+    }
     diagnostics.push({
       severity,
       source: "lsc",
       message: msg,
       range: {
-        start: { line, character: col },
-        end: { line, character: col + 1 }
+        start: { line, character: narrowed.start },
+        end: { line, character: narrowed.end }
       }
     });
   }
@@ -566,8 +934,12 @@ function normalizeHeuristicDiagnostics(diagnostics) {
 async function validateTextDocument(document, forceCompiler) {
   const settings = await getDocumentSettings(document.uri);
   const merged = Object.assign({}, defaultSettings, settings || {});
-  const heuristicDiagnostics = collectHeuristicDiagnostics(document, merged);
-  const diagnostics = normalizeHeuristicDiagnostics(heuristicDiagnostics);
+  const compilerOnly = merged.compilerDiagnosticsOnly !== false;
+  const diagnostics = [];
+  if (!compilerOnly) {
+    const heuristicDiagnostics = collectHeuristicDiagnostics(document, merged);
+    diagnostics.push(...normalizeHeuristicDiagnostics(heuristicDiagnostics));
+  }
 
   const shouldRunCompiler = forceCompiler
     ? merged.checkOnSave
@@ -583,7 +955,7 @@ async function validateTextDocument(document, forceCompiler) {
     }
 
     if (filePath && fs.existsSync(filePath)) {
-      const lscPath = (merged.lscPath || "").trim() || getDefaultLscPath();
+      const lscPath = resolveCompilerPath(merged.lscPath, filePath);
       const args = [filePath, "--check"];
       if (merged.maxSpeedDiagnostics) args.push("--max-speed");
       if ((merged.backendCompiler || "").trim()) {
@@ -596,10 +968,10 @@ async function validateTextDocument(document, forceCompiler) {
       }
 
       const check = await runCompilerCheck(lscPath, args, Number(merged.checkTimeoutMs) || 8000);
-      const compilerErrors = parseLineColDiagnostics(check.output, DiagnosticSeverity.Error);
-      diagnostics.push(...compilerErrors);
+      const compilerDiagnostics = parseCompilerDiagnostics(check.output, document);
+      diagnostics.push(...compilerDiagnostics);
 
-      if (!check.ok && compilerErrors.length === 0) {
+      if (!check.ok && compilerDiagnostics.length === 0) {
         const msg = (check.output || "LineScript check failed.").split(/\r?\n/).find((x) => x && x.trim()) ||
           "LineScript check failed.";
         diagnostics.push({
@@ -615,9 +987,10 @@ async function validateTextDocument(document, forceCompiler) {
     }
   }
 
+  const mergedDiagnostics = mergeDiagnosticsWithPrecedence(diagnostics);
   connection.sendDiagnostics({
     uri: document.uri,
-    diagnostics
+    diagnostics: mergedDiagnostics
   });
 }
 
@@ -640,6 +1013,9 @@ function getTokenAtPosition(document, position) {
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+const FUNC_PREFIX_RE =
+  "(?:(?:public|protected|private|static|virtual|override|final|inline|extern|fn|func)\\s+)*";
 
 documents.listen(connection);
 connection.listen();

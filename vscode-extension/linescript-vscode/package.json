@@ -63,7 +63,7 @@
         "linescript.lscPath": {
           "type": "string",
           "default": "",
-          "description": "Path to LineScript compiler executable. Empty means auto: lsc.exe (Windows) or lsc (non-Windows)."
+          "description": "Path to LineScript compiler executable. Empty means auto: nearest workspace lsc.exe/lsc (walking up from the file), then PATH fallback."
         },
         "linescript.backendCompiler": {
           "type": "string",
@@ -74,6 +74,11 @@
           "type": "boolean",
           "default": false,
           "description": "If true, include '--max-speed' in diagnostics checks."
+        },
+        "linescript.compilerDiagnosticsOnly": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use only compiler-authenticated diagnostics from 'lsc --check'. Disable to also include heuristic editor hints/suggestions."
         },
         "linescript.checkOnType": {
           "type": "boolean",
@@ -127,7 +132,7 @@
     "vscode-uri": "^3.0.8"
   },
   "scripts": {
-    "test": "node server/formatter.test.js && node server/hints.test.js && node server/false_positives.test.js",
+    "test": "node server/formatter.test.js && node server/hints.test.js && node server/hints_stress.test.js && node server/false_positives.test.js",
     "package:vsix": "npx @vscode/vsce package --out linescript-vscode.vsix",
     "install:local": "npm run package:vsix && code --install-extension linescript-vscode.vsix --force"
   }

@@ -84,6 +84,9 @@ else
 fi
 
 date_tag="$(date +%Y%m%d)"
+mkdir -p "$root/$out_dir"
+rm -rf "$root/$out_dir"/LineScript-*
+rm -f "$root/$out_dir"/LineScript-*.zip
 bundle_dir="$root/$out_dir/LineScript-$platform_tag-$date_tag"
 zip_path="$bundle_dir.zip"
 

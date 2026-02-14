@@ -82,7 +82,7 @@
     },
     "keyword": {
       "name": "keyword.control.linescript",
-      "match": "\\b(declare|const|owned|return|if|elif|else|unless|while|for|parallel|in|step|do|end|class|constructor|throws|break|continue|true|false|and|or|not|extern|func|flag)\\b"
+      "match": "\\b(declare|const|owned|return|if|elif|else|unless|while|for|parallel|in|step|do|end|class|extends|constructor|throws|break|continue|true|false|and|or|not|extern|func|flag|public|protected|private|static|virtual|override|final)\\b"
     },
     "type": {
       "name": "storage.type.linescript",

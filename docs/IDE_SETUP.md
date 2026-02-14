@@ -102,6 +102,10 @@ Recommended `.vscode/settings.json`:
     "*.lsc": "linescript",
     "*.ls": "linescript"
   },
+  "linescript.lscPath": ".\\lsc.exe",
+  "linescript.compilerDiagnosticsOnly": true,
+  "linescript.hintsEnabled": false,
+  "linescript.styleHintsEnabled": false,
   "[linescript]": {
     "editor.defaultFormatter": "linescript.linescript-vscode",
     "editor.formatOnSave": true
@@ -117,7 +121,7 @@ Optional (only if you want LineScript-specific file icons for the whole workspac
 }
 ```
 
-## 4.1 Install the LineScript VSCode Extension (LSP + Suggestions)
+## 4.1 Install the LineScript VSCode Extension (LSP + Diagnostics)
 
 The repository now includes:
 - `vscode-extension/linescript-vscode`
@@ -127,8 +131,8 @@ This extension adds:
 - autocomplete + snippets
 - hover docs
 - go-to-definition and outline symbols
-- live diagnostics from `lsc --check`
-- suggestion diagnostics (for example: `Are you sure this is correct?` on suspicious condition assignments)
+- live diagnostics from `lsc --check` (authoritative by default)
+- optional suggestion diagnostics (when heuristic hints are enabled)
 - quick fixes for common mistakes
 
 Normal use (recommended, one-time install):
@@ -153,12 +157,18 @@ This installs a VSIX directly into your VS Code profile. After that:
 Key extension settings:
 - `linescript.lscPath`
 - `linescript.backendCompiler`
+- `linescript.compilerDiagnosticsOnly`
 - `linescript.checkOnType`
 - `linescript.checkOnSave`
 - `linescript.checkTimeoutMs`
 - `linescript.extraCheckArgs`
 - `linescript.hintsEnabled`
+- `linescript.styleHintsEnabled`
 - `linescript.maxHintsPerFile`
+
+Recommended diagnostics mode:
+- keep `linescript.compilerDiagnosticsOnly = true` for compiler-authenticated diagnostics only.
+- set `linescript.hintsEnabled = false` if you do not want heuristic editor hints.
 
 File icons:
 - the extension includes:

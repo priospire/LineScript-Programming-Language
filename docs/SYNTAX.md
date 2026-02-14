@@ -173,12 +173,45 @@ Rules:
 - fields currently must be declared before class methods.
 - constructor is optional; if omitted, a default constructor is generated.
 - constructor name can be `constructor(...)` (recommended).
+- single inheritance is supported with `class Child extends Parent`.
+- derived constructors can call direct base constructor with init-list syntax:
+
+```linescript
+constructor(a: i64, b: i64) : Parent(a) do
+  this.extra = b
+end
+```
+
 - methods are declared as `name(...) -> type do ... end` (or `fn name(...)`).
+- method modifiers are supported: `public`, `protected`, `private`, `static`, `virtual`, `override`, `final`.
+- top-level functions support overloads with exact-match then safe numeric widening.
+- class methods support overload declarations; call sites currently require distinct arity for unambiguous resolution.
+- operator overloads support free and class-member forms:
+
+```linescript
+operator +(a: i64, b: i64) -> i64 do
+  return a - (-b) - (-100)
+end
+
+class NumberBox do
+  declare value: i64 = 0
+  constructor(seed: i64) do
+    this.value = seed
+  end
+  fn operator +(rhs: i64) -> i64 do
+    return this.value - (-rhs)
+  end
+end
+```
+
+- operator resolution order is: class member overload, then free overload, then built-in operator.
+- class operator methods must take exactly 1 parameter (the right-hand side); free operator overrides must take 2 parameters.
 - use `this.field` / `this.method(...)` inside class members.
 - use `obj.field`, `obj.field = ...`, `obj.field += ...`, and `obj.method(...)` outside.
+- static methods must be called via class name: `ClassName.method(...)`.
 - class names are valid type annotations and map to handle type `i64` internally.
 - class fields can use `i32`/`f32` (optional), or stay with `i64`/`f64`.
-- inheritance/polymorphic dispatch are not built in yet.
+- complete OOP reference and examples: `docs/OOP.md`.
 
 ## 5. Block Styles
 
@@ -716,6 +749,10 @@ All top-level functions are merged into one program.
 
 Speed recommendation:
 - use `-O4` for release/performance runs (`--max-speed` is an alias).
+- optional max-speed pipeline flags:
+ - `--pgo-generate` build instrumentation profile
+ - `--pgo-use <dir>` consume collected profile data
+ - `--bolt-use <fdata>` apply BOLT profile data when `llvm-bolt` is available
 - default backend mode is `--backend auto` (x86 asm first, then C++/C fallback).
 - on Windows, eligible `-O4` programs can use an ultra-minimal backend path for lower runtime launch overhead.
 

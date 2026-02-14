@@ -8,33 +8,22 @@ Language support for `.lsc` and `.ls`:
 - go-to-definition
 - document symbols
 - diagnostics from `lsc --check`
-- suggestions + quick fixes for common mistakes
+- optional suggestions + quick fixes for common mistakes
 - document formatting (supports format-on-save)
 
 ## Diagnostics and Suggestions
 
-The language server highlights malformed/wrong code and also gives suggestions, including:
-- suspicious assignment in condition (`if x = y do`) with message:
-- `Are you sure this is correct? ... Did you mean '=='?`
-- typo suggestion: `printIn(...)` -> `println(...)`
-- ignored `input(...)` return value hints
-- unmatched/extra `end` block hints
-- `else if` style hint -> suggests `elif`
-- `...` range typo hint -> suggests `..`
-- missing `do` hints on block starters
-- Python-style `:` block hints -> suggests `do`
-- condition simplification hints (`== true` / `== false`)
-- semicolon/compound-assignment QoL hints
-- undeclared variable usage/assignment warnings
-- const reassignment warnings
-- duplicate declaration warnings
-- `break` / `continue` outside-loop warnings
-- unreachable statement warnings after `return`/`break`/`continue`
-- compiler-level parse/type errors via `lsc --check` (authoritative red squiggles)
+Default behavior is compiler-authoritative:
+- diagnostics come from `lsc --check`
+- no heuristic guessing by the editor
+
+If you want heuristic editor hints/suggestions, set:
+- `linescript.compilerDiagnosticsOnly = false`
+- `linescript.hintsEnabled = true`
 
 Diagnostic model:
-- red error squiggles come from compiler diagnostics (`lsc --check`)
-- heuristic/editor diagnostics are suggestions/warnings and are intentionally non-fatal
+- compiler diagnostics are authoritative
+- optional heuristic/editor diagnostics are non-authoritative and disabled by default
 
 ## Settings
 
@@ -42,6 +31,7 @@ Configure in VS Code settings:
 - `linescript.lscPath`
 - `linescript.backendCompiler`
 - `linescript.maxSpeedDiagnostics`
+- `linescript.compilerDiagnosticsOnly`
 - `linescript.checkOnType`
 - `linescript.checkOnSave`
 - `linescript.checkTimeoutMs`
@@ -49,6 +39,9 @@ Configure in VS Code settings:
 - `linescript.hintsEnabled`
 - `linescript.styleHintsEnabled`
 - `linescript.maxHintsPerFile`
+
+Compiler path resolution:
+- if `linescript.lscPath` is empty, the extension first looks for a local `lsc.exe`/`lsc` by walking up from the current file, then falls back to PATH.
 
 ## File Icon Support
 

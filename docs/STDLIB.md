@@ -5,6 +5,8 @@ These built-ins are available without imports.
 For the exhaustive API catalog (including key name tables, scroll wheel, mouse buttons, and platform behavior),
 see `docs/API_REFERENCE.md`.
 
+For full class/OOP syntax (inheritance, modifiers, overload rules), see `docs/OOP.md`.
+
 ## 1. Core I/O
 
 ```linescript
