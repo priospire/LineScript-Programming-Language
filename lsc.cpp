@@ -80,6 +80,7 @@ enum class TokenKind {
   KwWhile,
   KwFor,
   KwParallel,
+  KwMacro,
   KwClass,
   KwIn,
   KwStep,
@@ -150,6 +151,7 @@ static const char *tokenKindName(TokenKind k) {
   case TokenKind::KwWhile: return "KwWhile";
   case TokenKind::KwFor: return "KwFor";
   case TokenKind::KwParallel: return "KwParallel";
+  case TokenKind::KwMacro: return "KwMacro";
   case TokenKind::KwClass: return "KwClass";
   case TokenKind::KwIn: return "KwIn";
   case TokenKind::KwStep: return "KwStep";
@@ -354,6 +356,8 @@ public:
       case ')': out.push_back({TokenKind::RPar, ")", s}); break;
       case '{': out.push_back({TokenKind::LBra, "{", s}); break;
       case '}': out.push_back({TokenKind::RBra, "}", s}); break;
+      case '[': out.push_back({TokenKind::LBra, "[", s}); break;
+      case ']': out.push_back({TokenKind::RBra, "]", s}); break;
       case '+': out.push_back({TokenKind::Plus, "+", s}); break;
       case '-': out.push_back({TokenKind::Minus, "-", s}); break;
       case '*': out.push_back({TokenKind::Star, "*", s}); break;
@@ -431,6 +435,7 @@ private:
     if (t == "while") return {TokenKind::KwWhile, t, s};
     if (t == "for") return {TokenKind::KwFor, t, s};
     if (t == "parallel") return {TokenKind::KwParallel, t, s};
+    if (t == "macro") return {TokenKind::KwMacro, t, s};
     if (t == "class") return {TokenKind::KwClass, t, s};
     if (t == "in") return {TokenKind::KwIn, t, s};
     if (t == "step") return {TokenKind::KwStep, t, s};
@@ -546,7 +551,9 @@ struct EVar : Expr {
 struct EUnary : Expr {
   UK op;
   EP x;
-  EUnary(UK opIn, EP xIn, Span s) : Expr(EK::Unary, s), op(opIn), x(std::move(xIn)) {}
+  std::string overrideFn;
+  EUnary(UK opIn, EP xIn, Span s, std::string overrideFnIn = {})
+      : Expr(EK::Unary, s), op(opIn), x(std::move(xIn)), overrideFn(std::move(overrideFnIn)) {}
 };
 struct EBinary : Expr {
   BK op;
@@ -641,6 +648,7 @@ struct Fn {
   std::string cliFlagName;
   bool isOperatorOverride = false;
   std::optional<BK> operatorKind;
+  std::optional<UK> unaryOperatorKind;
   bool isClassMethod = false;
   std::string classOwner;
   bool methodStatic = false;
@@ -661,14 +669,21 @@ struct Program {
 };
 static constexpr const char *kScriptEntryName = "__linescript_script_main";
 
+enum class AccessModifier { Public, Protected, Private };
+
 struct ParsedClassField {
   std::string n;
   Type t = Type::I64;
+  AccessModifier access = AccessModifier::Public;
   EP init;
   Span s;
 };
 
-enum class AccessModifier { Public, Protected, Private };
+struct FieldInfo {
+  Type t = Type::I64;
+  AccessModifier access = AccessModifier::Public;
+  std::string owner;
+};
 
 struct MethodInfo {
   std::string symbol;
@@ -686,7 +701,7 @@ struct ClassInfo {
   std::string name;
   Span s;
   std::string base;
-  std::unordered_map<std::string, Type> fields;
+  std::unordered_map<std::string, FieldInfo> fields;
   std::unordered_map<std::string, std::vector<MethodInfo>> methods;
 };
 
@@ -735,6 +750,31 @@ static std::string operatorOverrideSymbol(BK op) {
   return "";
 }
 
+static bool isOverloadableUnaryOp(UK op) {
+  switch (op) {
+  case UK::Neg:
+  case UK::Not:
+    return true;
+  }
+  return false;
+}
+
+static std::string unaryOperatorOverrideSymbol(UK op) {
+  switch (op) {
+  case UK::Neg: return "__ls_uop_neg";
+  case UK::Not: return "__ls_uop_not";
+  }
+  return "";
+}
+
+static std::string unaryOperatorSymbolText(UK op) {
+  switch (op) {
+  case UK::Neg: return "-";
+  case UK::Not: return "!";
+  }
+  return "?";
+}
+
 static std::string operatorSymbolText(BK op) {
   switch (op) {
   case BK::Add: return "+";
@@ -777,7 +817,9 @@ public:
     Program p;
     skipNl();
     while (!is(TokenKind::End)) {
-      if (eat(TokenKind::KwClass)) {
+      if (eat(TokenKind::KwMacro)) {
+        parseMacroDecl();
+      } else if (eat(TokenKind::KwClass)) {
         parseClass(p, t_[i_ - 1].span);
       } else if (startsFunctionDecl()) {
         p.f.push_back(fn());
@@ -790,6 +832,18 @@ public:
   }
 
 private:
+  enum class MacroArgKind { Expr, Stmt, Item };
+  struct MacroParam {
+    std::string name;
+    MacroArgKind kind = MacroArgKind::Expr;
+  };
+  struct MacroDecl {
+    std::string name;
+    std::vector<MacroParam> params;
+    MacroArgKind retKind = MacroArgKind::Expr;
+    EP bodyExpr;
+    Span s;
+  };
   struct OverloadDecl {
     std::vector<Type> params;
     std::string symbol;
@@ -799,8 +853,10 @@ private:
   std::size_t i_ = 0;
   std::unordered_map<std::string, ClassInfo> classes_;
   std::unordered_map<std::string, std::string> varClass_;
+  std::unordered_map<std::string, std::string> varFreeFn_;
   std::unordered_set<std::string> cliFlagNames_;
   std::unordered_map<std::string, std::vector<OverloadDecl>> topFnOverloads_;
+  std::unordered_map<std::string, MacroDecl> macros_;
   std::size_t topFnOverloadId_ = 0;
   std::string currentClass_;
 
@@ -875,6 +931,15 @@ private:
       return false;
     }
   }
+  static bool isOverloadableUnaryOperatorTokenKind(TokenKind k) {
+    switch (k) {
+    case TokenKind::Minus:
+    case TokenKind::Bang:
+      return true;
+    default:
+      return false;
+    }
+  }
   static BK overloadableOperatorTokenToBK(TokenKind k, const Span &s) {
     switch (k) {
     case TokenKind::Plus: return BK::Add;
@@ -894,6 +959,14 @@ private:
     default: break;
     }
     throw CompileError(s, "unsupported operator override token");
+  }
+  static UK overloadableUnaryOperatorTokenToUK(TokenKind k, const Span &s) {
+    switch (k) {
+    case TokenKind::Minus: return UK::Neg;
+    case TokenKind::Bang: return UK::Not;
+    default: break;
+    }
+    throw CompileError(s, "unsupported unary operator override token");
   }
   bool startsFunctionDecl() const {
     std::size_t j = skipNlFrom(i_);
@@ -928,7 +1001,13 @@ private:
     if (t_[j].text == "operator") {
       ++j;
       j = skipNlFrom(j);
-      if (j >= t_.size() || !isOverloadableOperatorTokenKind(t_[j].kind)) return false;
+      if (j < t_.size() && t_[j].kind == TokenKind::Id && t_[j].text == "unary") {
+        ++j;
+        j = skipNlFrom(j);
+      }
+      if (j >= t_.size() ||
+          !(isOverloadableOperatorTokenKind(t_[j].kind) || isOverloadableUnaryOperatorTokenKind(t_[j].kind)))
+        return false;
       ++j;
       j = skipNlFrom(j);
       return j < t_.size() && t_[j].kind == TokenKind::LPar;
@@ -1013,6 +1092,57 @@ private:
     if (isStmtBoundary(cur().kind)) return;
     throw CompileError(cur().span, msg);
   }
+  MacroArgKind parseMacroArgKindToken(const Token &tok) {
+    if (tok.text == "expr") return MacroArgKind::Expr;
+    if (tok.text == "stmt") return MacroArgKind::Stmt;
+    if (tok.text == "item") return MacroArgKind::Item;
+    throw CompileError(tok.span, "unknown macro kind '" + tok.text + "' (expected expr|stmt|item)");
+  }
+  void parseMacroDecl() {
+    Token nameTok = need(TokenKind::Id, "expected macro name");
+    if (macros_.count(nameTok.text)) {
+      throw CompileError(nameTok.span, "duplicate macro '" + nameTok.text + "'");
+    }
+    std::vector<MacroParam> params;
+    need(TokenKind::LPar, "expected '(' after macro name");
+    if (!is(TokenKind::RPar)) {
+      while (true) {
+        MacroParam p;
+        p.name = need(TokenKind::Id, "expected macro parameter name").text;
+        need(TokenKind::Colon, "expected ':' in macro parameter");
+        Token kindTok = need(TokenKind::Id, "expected macro parameter kind");
+        p.kind = parseMacroArgKindToken(kindTok);
+        params.push_back(std::move(p));
+        if (!eat(TokenKind::Comma)) break;
+      }
+    }
+    need(TokenKind::RPar, "expected ')' after macro parameters");
+    need(TokenKind::Arrow, "expected '->' in macro declaration");
+    Token retKindTok = need(TokenKind::Id, "expected macro return kind");
+    MacroArgKind retKind = parseMacroArgKindToken(retKindTok);
+    skipNl();
+    bool braceStyle = false, endStyle = false;
+    if (eat(TokenKind::LBra)) braceStyle = true;
+    else if (eat(TokenKind::KwDo)) endStyle = true;
+    else throw CompileError(cur().span, "expected '{' or 'do' after macro signature");
+    if (retKind != MacroArgKind::Expr) {
+      throw CompileError(retKindTok.span,
+                         "macro return kinds stmt/item are not implemented yet (use -> expr for now)");
+    }
+    skipNl();
+    EP bodyExpr = expr();
+    needStmtEnd("expected statement terminator after macro body expression");
+    skipNl();
+    if (braceStyle) need(TokenKind::RBra, "expected '}' to close macro");
+    else if (endStyle) need(TokenKind::KwEnd, "expected 'end' to close macro");
+    MacroDecl decl;
+    decl.name = nameTok.text;
+    decl.params = std::move(params);
+    decl.retKind = retKind;
+    decl.bodyExpr = std::move(bodyExpr);
+    decl.s = nameTok.span;
+    macros_[decl.name] = std::move(decl);
+  }
   EP defaultValueFor(Type t, const Span &s) {
     switch (t) {
     case Type::I32: return std::make_unique<EInt>(0, s);
@@ -1035,7 +1165,7 @@ private:
     case EK::Var: return std::make_unique<EVar>(static_cast<const EVar &>(e).n, e.s);
     case EK::Unary: {
       const auto &n = static_cast<const EUnary &>(e);
-      return std::make_unique<EUnary>(n.op, cloneExpr(*n.x), e.s);
+      return std::make_unique<EUnary>(n.op, cloneExpr(*n.x), e.s, n.overrideFn);
     }
     case EK::Binary: {
       const auto &n = static_cast<const EBinary &>(e);
@@ -1051,17 +1181,66 @@ private:
     }
     throw CompileError(e.s, "internal clone expression error");
   }
+  static EP substMacroExpr(const Expr &e, const std::unordered_map<std::string, const Expr *> &subs) {
+    if (e.k == EK::Var) {
+      const auto &n = static_cast<const EVar &>(e);
+      auto it = subs.find(n.n);
+      if (it != subs.end()) return cloneExpr(*it->second);
+      return std::make_unique<EVar>(n.n, e.s);
+    }
+    switch (e.k) {
+    case EK::Int: return std::make_unique<EInt>(static_cast<const EInt &>(e).v, e.s);
+    case EK::Float: return std::make_unique<EFloat>(static_cast<const EFloat &>(e).v, e.s);
+    case EK::Bool: return std::make_unique<EBool>(static_cast<const EBool &>(e).v, e.s);
+    case EK::Str: return std::make_unique<EString>(static_cast<const EString &>(e).v, e.s);
+    case EK::Unary: {
+      const auto &n = static_cast<const EUnary &>(e);
+      return std::make_unique<EUnary>(n.op, substMacroExpr(*n.x, subs), e.s, n.overrideFn);
+    }
+    case EK::Binary: {
+      const auto &n = static_cast<const EBinary &>(e);
+      return std::make_unique<EBinary>(n.op, substMacroExpr(*n.l, subs), substMacroExpr(*n.r, subs), e.s,
+                                       n.overrideFn);
+    }
+    case EK::Call: {
+      const auto &n = static_cast<const ECall &>(e);
+      std::vector<EP> args;
+      args.reserve(n.a.size());
+      for (const auto &a : n.a) args.push_back(substMacroExpr(*a, subs));
+      return std::make_unique<ECall>(n.f, std::move(args), e.s);
+    }
+    case EK::Var: break;
+    }
+    throw CompileError(e.s, "internal macro substitution error");
+  }
 
   Type parseType(std::string *className = nullptr) {
     Token tok = need(TokenKind::Id, "expected type name");
     if (className) className->clear();
+    auto parseGenericInner = [&](const char *kindName) -> Type {
+      need(TokenKind::Lt, std::string("expected '<' in ") + kindName + " type");
+      Token innerTok = need(TokenKind::Id, std::string("expected primitive type in ") + kindName + " type");
+      const bool knownPrim = innerTok.text == "i32" || innerTok.text == "i64" || innerTok.text == "f32" ||
+                             innerTok.text == "f64" || innerTok.text == "bool" || innerTok.text == "byte" ||
+                             innerTok.text == "str";
+      const bool knownClass = classes_.count(innerTok.text) != 0;
+      if (!knownPrim && !knownClass) {
+        throw CompileError(innerTok.span, std::string("unsupported ") + kindName + " inner type '" + innerTok.text + "'");
+      }
+      need(TokenKind::Gt, std::string("expected '>' in ") + kindName + " type");
+      return Type::I64;
+    };
     if (tok.text == "i32") return Type::I32;
     if (tok.text == "i64") return Type::I64;
     if (tok.text == "f32") return Type::F32;
     if (tok.text == "f64") return Type::F64;
     if (tok.text == "bool") return Type::Bool;
+    if (tok.text == "byte") return Type::I32;
     if (tok.text == "str") return Type::Str;
     if (tok.text == "void") return Type::Void;
+    if (tok.text == "ptr") return parseGenericInner("ptr");
+    if (tok.text == "slice") return parseGenericInner("slice");
+    if (tok.text == "array") return parseGenericInner("array");
     if (classes_.count(tok.text)) {
       if (className) *className = tok.text;
       return Type::I64;
@@ -1125,6 +1304,7 @@ private:
     return "__ls_cls_" + cls + "_" + method + "_" + std::to_string(overloadIndex);
   }
   std::string classOperatorMethodKey(BK op) const { return operatorOverrideSymbol(op); }
+  std::string classUnaryOperatorMethodKey(UK op) const { return unaryOperatorOverrideSymbol(op); }
 
   std::string resolveReceiverClass(const std::string &receiver) const {
     if (receiver == "this") return currentClass_;
@@ -1172,16 +1352,33 @@ private:
       auto it = classes_.find(cur);
       if (it == classes_.end()) return std::nullopt;
       auto fit = it->second.fields.find(field);
-      if (fit != it->second.fields.end()) return fit->second;
+      if (fit != it->second.fields.end()) return fit->second.t;
       cur = it->second.base;
     }
     return std::nullopt;
+  }
+  const FieldInfo *findFieldRecursive(const std::string &className, const std::string &field) const {
+    std::string cur = className;
+    while (!cur.empty()) {
+      auto it = classes_.find(cur);
+      if (it == classes_.end()) return nullptr;
+      auto fit = it->second.fields.find(field);
+      if (fit != it->second.fields.end()) return &fit->second;
+      cur = it->second.base;
+    }
+    return nullptr;
   }
   bool canAccessMethod(const MethodInfo &m, const std::string &accessorClass) const {
     if (m.access == AccessModifier::Public) return true;
     if (m.access == AccessModifier::Private) return accessorClass == m.owner;
     if (accessorClass.empty()) return false;
     return accessorClass == m.owner || isSubclassOf(accessorClass, m.owner);
+  }
+  bool canAccessField(const FieldInfo &f, const std::string &accessorClass) const {
+    if (f.access == AccessModifier::Public) return true;
+    if (f.access == AccessModifier::Private) return accessorClass == f.owner;
+    if (accessorClass.empty()) return false;
+    return accessorClass == f.owner || isSubclassOf(accessorClass, f.owner);
   }
   std::string resolveMemberOperatorSymbol(const Expr &lhs, BK op) const {
     if (lhs.k != EK::Var) return "";
@@ -1191,12 +1388,27 @@ private:
     const std::string opKey = classOperatorMethodKey(op);
     if (opKey.empty()) return "";
     const MethodInfo *m = findMethodRecursive(className, opKey, 1);
-    if (!m || m->isStatic) return "";
+    if (!m || m->isStatic || !canAccessMethod(*m, currentClass_)) return "";
+    return m->symbol;
+  }
+  std::string resolveMemberUnaryOperatorSymbol(const Expr &operand, UK op) const {
+    if (operand.k != EK::Var) return "";
+    const auto &recv = static_cast<const EVar &>(operand);
+    const std::string className = resolveReceiverClass(recv.n);
+    if (className.empty()) return "";
+    const std::string opKey = classUnaryOperatorMethodKey(op);
+    if (opKey.empty()) return "";
+    const MethodInfo *m = findMethodRecursive(className, opKey, 0);
+    if (!m || m->isStatic || !canAccessMethod(*m, currentClass_)) return "";
     return m->symbol;
   }
   EP makeBinaryExpr(BK op, EP lhs, EP rhs, const Span &s) {
     const std::string memberOp = resolveMemberOperatorSymbol(*lhs, op);
     return std::make_unique<EBinary>(op, std::move(lhs), std::move(rhs), s, memberOp);
+  }
+  EP makeUnaryExpr(UK op, EP operand, const Span &s) {
+    const std::string memberOp = resolveMemberUnaryOperatorSymbol(*operand, op);
+    return std::make_unique<EUnary>(op, std::move(operand), s, memberOp);
   }
   static bool isSuperuserNamespaceReceiver(const std::string &receiver) {
     return isSuperuserNamespaceSymbol(receiver);
@@ -1267,6 +1479,25 @@ private:
     if (e.k != EK::Call) return "";
     const auto &c = static_cast<const ECall &>(e);
     return classes_.count(c.f) ? c.f : "";
+  }
+  std::string constructorFreeFnFromExpr(const Expr &e) const {
+    if (e.k != EK::Call) return "";
+    const auto &c = static_cast<const ECall &>(e);
+    if (classes_.count(c.f)) return "object_free";
+    if (c.f == "array_new") return "array_free";
+    if (c.f == "dict_new") return "dict_free";
+    if (c.f == "map_new") return "map_free";
+    if (c.f == "object_new") return "object_free";
+    if (c.f == "option_some" || c.f == "option_none") return "option_free";
+    if (c.f == "result_ok" || c.f == "result_err") return "result_free";
+    if (c.f == "np_new") return "np_free";
+    if (c.f == "gfx_new") return "gfx_free";
+    if (c.f == "game_new") return "game_free";
+    if (c.f == "pg_surface_new") return "pg_surface_free";
+    if (c.f == "phys_new") return "phys_free";
+    if (c.f == "http_server_listen") return "http_server_close";
+    if (c.f == "http_client_connect") return "http_client_close";
+    return "";
   }
 
   void parseClass(Program &p, const Span &classSpan) {
@@ -1365,6 +1596,7 @@ private:
         }
         ParsedClassField field;
         field.s = t_[i_ - 1].span;
+        field.access = memberAccess;
         field.n = need(TokenKind::Id, "expected class field name").text;
         if (classRef.fields.count(field.n)) {
           throw CompileError(field.s, "duplicate class field '" + field.n + "'");
@@ -1376,7 +1608,7 @@ private:
         } else {
           field.init = defaultValueFor(field.t, field.s);
         }
-        classRef.fields[field.n] = field.t;
+        classRef.fields[field.n] = FieldInfo{field.t, memberAccess, className};
         fields.push_back(std::move(field));
         needStmtEnd("expected statement terminator after class field declaration");
         continue;
@@ -1411,6 +1643,7 @@ private:
 
       Token nameTok;
       bool methodIsOperator = false;
+      bool methodIsUnaryOperator = false;
       std::string methodKey;
       std::string methodDisplay;
       const bool hasFnKeyword = eat(TokenKind::KwFn);
@@ -1418,17 +1651,36 @@ private:
         Token opTok = cur();
         ++i_;
         skipNl();
-        if (!isOverloadableOperatorTokenKind(cur().kind)) {
-          throw CompileError(cur().span, "expected overloadable operator token after 'operator'");
+        if (is(TokenKind::Id) && cur().text == "unary") {
+          methodIsUnaryOperator = true;
+          ++i_;
+          skipNl();
         }
-        Token symTok = cur();
-        ++i_;
-        const BK op = overloadableOperatorTokenToBK(symTok.kind, symTok.span);
-        methodIsOperator = true;
-        f.operatorKind = op;
-        methodKey = classOperatorMethodKey(op);
-        methodDisplay = operatorSymbolText(op);
-        nameTok = opTok;
+        if (methodIsUnaryOperator) {
+          if (!isOverloadableUnaryOperatorTokenKind(cur().kind)) {
+            throw CompileError(cur().span, "expected overloadable unary operator token after 'operator unary'");
+          }
+          Token symTok = cur();
+          ++i_;
+          const UK op = overloadableUnaryOperatorTokenToUK(symTok.kind, symTok.span);
+          methodIsOperator = true;
+          f.unaryOperatorKind = op;
+          methodKey = classUnaryOperatorMethodKey(op);
+          methodDisplay = std::string("unary ") + unaryOperatorSymbolText(op);
+          nameTok = opTok;
+        } else {
+          if (!isOverloadableOperatorTokenKind(cur().kind)) {
+            throw CompileError(cur().span, "expected overloadable operator token after 'operator'");
+          }
+          Token symTok = cur();
+          ++i_;
+          const BK op = overloadableOperatorTokenToBK(symTok.kind, symTok.span);
+          methodIsOperator = true;
+          f.operatorKind = op;
+          methodKey = classOperatorMethodKey(op);
+          methodDisplay = operatorSymbolText(op);
+          nameTok = opTok;
+        }
       } else if (is(TokenKind::Id) && (hasFnKeyword || lookNonNl(1).kind == TokenKind::LPar)) {
         nameTok = need(TokenKind::Id, "expected method name");
         methodKey = nameTok.text;
@@ -1482,7 +1734,17 @@ private:
       if (isCtor && f.ex) {
         throw CompileError(nameTok.span, "constructor cannot be extern");
       }
-      if (methodIsOperator) {
+      if (methodIsOperator && methodIsUnaryOperator) {
+        if (f.p.size() != 0) {
+          throw CompileError(nameTok.span, "operator method '" + methodDisplay + "' expects exactly 0 parameters");
+        }
+        if (f.ret == Type::Void) {
+          throw CompileError(nameTok.span, "operator method '" + methodDisplay + "' must return a value");
+        }
+        if (!f.throws.empty()) {
+          throw CompileError(nameTok.span, "operator methods do not support 'throws'");
+        }
+      } else if (methodIsOperator) {
         if (f.p.size() != 1) {
           throw CompileError(nameTok.span, "operator method '" + methodDisplay + "' expects exactly 1 parameter");
         }
@@ -1687,17 +1949,34 @@ private:
       Token opTok = cur();
       ++i_;
       skipNl();
-      if (!isOverloadableOperatorTokenKind(cur().kind)) {
-        throw CompileError(cur().span, "expected overloadable operator token after 'operator'");
-      }
-      Token symTok = cur();
-      ++i_;
-      const BK op = overloadableOperatorTokenToBK(symTok.kind, symTok.span);
       f.s = opTok.span;
-      f.n = operatorOverrideSymbol(op);
+      bool unaryOp = false;
+      if (is(TokenKind::Id) && cur().text == "unary") {
+        unaryOp = true;
+        ++i_;
+        skipNl();
+      }
+      if (unaryOp) {
+        if (!isOverloadableUnaryOperatorTokenKind(cur().kind)) {
+          throw CompileError(cur().span, "expected overloadable unary operator token after 'operator unary'");
+        }
+        Token symTok = cur();
+        ++i_;
+        const UK op = overloadableUnaryOperatorTokenToUK(symTok.kind, symTok.span);
+        f.n = unaryOperatorOverrideSymbol(op);
+        f.unaryOperatorKind = op;
+      } else {
+        if (!isOverloadableOperatorTokenKind(cur().kind)) {
+          throw CompileError(cur().span, "expected overloadable operator token after 'operator'");
+        }
+        Token symTok = cur();
+        ++i_;
+        const BK op = overloadableOperatorTokenToBK(symTok.kind, symTok.span);
+        f.n = operatorOverrideSymbol(op);
+        f.operatorKind = op;
+      }
       f.sourceName = f.n;
       f.isOperatorOverride = true;
-      f.operatorKind = op;
       nameTok = opTok;
     } else if (is(TokenKind::Id) && (hasFnKeyword || lookNonNl(1).kind == TokenKind::LPar)) {
       nameTok = need(TokenKind::Id, "expected function name");
@@ -1718,17 +1997,34 @@ private:
       }
     }
     if (f.isOperatorOverride) {
-      if (!f.operatorKind.has_value() || !isOverloadableBinaryOp(*f.operatorKind)) {
-        throw CompileError(f.s, "invalid operator override declaration");
-      }
-      if (f.p.size() != 2) {
-        throw CompileError(f.s, "operator override '" + operatorSymbolText(*f.operatorKind) + "' expects exactly 2 parameters");
-      }
-      if (f.ret == Type::Void) {
-        throw CompileError(f.s, "operator override '" + operatorSymbolText(*f.operatorKind) + "' must return a value");
-      }
-      if (!f.throws.empty()) {
-        throw CompileError(f.s, "operator overrides do not support 'throws'");
+      if (f.unaryOperatorKind.has_value()) {
+        if (!isOverloadableUnaryOp(*f.unaryOperatorKind)) {
+          throw CompileError(f.s, "invalid unary operator override declaration");
+        }
+        if (f.p.size() != 1) {
+          throw CompileError(f.s, "operator override 'unary " + unaryOperatorSymbolText(*f.unaryOperatorKind) +
+                                      "' expects exactly 1 parameter");
+        }
+        if (f.ret == Type::Void) {
+          throw CompileError(f.s, "operator override 'unary " + unaryOperatorSymbolText(*f.unaryOperatorKind) +
+                                      "' must return a value");
+        }
+        if (!f.throws.empty()) {
+          throw CompileError(f.s, "operator overrides do not support 'throws'");
+        }
+      } else {
+        if (!f.operatorKind.has_value() || !isOverloadableBinaryOp(*f.operatorKind)) {
+          throw CompileError(f.s, "invalid operator override declaration");
+        }
+        if (f.p.size() != 2) {
+          throw CompileError(f.s, "operator override '" + operatorSymbolText(*f.operatorKind) + "' expects exactly 2 parameters");
+        }
+        if (f.ret == Type::Void) {
+          throw CompileError(f.s, "operator override '" + operatorSymbolText(*f.operatorKind) + "' must return a value");
+        }
+        if (!f.throws.empty()) {
+          throw CompileError(f.s, "operator overrides do not support 'throws'");
+        }
       }
     }
     if (f.ex) {
@@ -1829,6 +2125,7 @@ private:
 
   SP stmt() {
     skipNl();
+    if (is(TokenKind::Id) && cur().text == "delete") return sDelete();
     if (eat(TokenKind::KwDeclare)) return sDeclare();
     if (eat(TokenKind::KwLet) || eat(TokenKind::KwVar) || eat(TokenKind::KwConst)) {
       throw CompileError(cur().span, "use 'declare <name>' for variable declarations");
@@ -1910,12 +2207,18 @@ private:
       }
     }
     const std::string ctorClass = constructorClassFromExpr(*v);
+    const std::string ctorFreeFn = constructorFreeFnFromExpr(*v);
     if (!declaredClass.empty()) {
       varClass_[n.text] = declaredClass;
     } else if (!ctorClass.empty()) {
       varClass_[n.text] = ctorClass;
     } else {
       varClass_.erase(n.text);
+    }
+    if (!ctorFreeFn.empty()) {
+      varFreeFn_[n.text] = ctorFreeFn;
+    } else {
+      varFreeFn_.erase(n.text);
     }
     needStmtEnd("expected statement terminator after variable declaration");
     return std::make_unique<SLet>(n.text, d, isConst, isOwned, std::move(v), n.span);
@@ -1938,15 +2241,22 @@ private:
     }
     if (op == TokenKind::Assign) {
       std::string assignedClass = constructorClassFromExpr(*v);
+      std::string assignedFreeFn = constructorFreeFnFromExpr(*v);
       if (assignedClass.empty() && v->k == EK::Var) {
         const auto &rhsVar = static_cast<const EVar &>(*v);
         auto it = varClass_.find(rhsVar.n);
         if (it != varClass_.end()) assignedClass = it->second;
+        auto itFree = varFreeFn_.find(rhsVar.n);
+        if (itFree != varFreeFn_.end()) assignedFreeFn = itFree->second;
       }
       if (!assignedClass.empty())
         varClass_[n.text] = assignedClass;
       else
         varClass_.erase(n.text);
+      if (!assignedFreeFn.empty())
+        varFreeFn_[n.text] = assignedFreeFn;
+      else
+        varFreeFn_.erase(n.text);
     }
     needStmtEnd("expected statement terminator after assignment");
     return std::make_unique<SAssign>(n.text, std::move(v), n.span);
@@ -1964,12 +2274,15 @@ private:
     if (className.empty()) {
       throw CompileError(receiverTok.span, "member assignment requires a class-typed receiver");
     }
-    std::optional<Type> fieldTypeOpt = findFieldTypeRecursive(className, fieldTok.text);
-    if (!fieldTypeOpt.has_value()) {
+    const FieldInfo *fieldInfo = findFieldRecursive(className, fieldTok.text);
+    if (!fieldInfo) {
       throw CompileError(fieldTok.span, "class '" + className + "' has no field '" + fieldTok.text + "'");
     }
+    if (!canAccessField(*fieldInfo, currentClass_)) {
+      throw CompileError(fieldTok.span, "field '" + fieldTok.text + "' is not accessible in this context");
+    }
 
-    Type fieldType = *fieldTypeOpt;
+    Type fieldType = fieldInfo->t;
     EP rhs;
     if (op == TokenKind::Assign) {
       rhs = expr();
@@ -2027,7 +2340,7 @@ private:
 
   SP sUnless(const Span &s) {
     EP c = expr();
-    EP neg = std::make_unique<EUnary>(UK::Not, std::move(c), s);
+    EP neg = makeUnaryExpr(UK::Not, std::move(c), s);
     skipNl();
     if (eat(TokenKind::KwDo)) {
       std::vector<SP> t = blockDoUntil({TokenKind::KwElif, TokenKind::KwElse, TokenKind::KwEnd});
@@ -2069,6 +2382,28 @@ private:
   SP sFormatBlock(const Span &s, EP endArg) {
     auto b = block();
     return std::make_unique<SFormatBlock>(std::move(endArg), std::move(b), s);
+  }
+
+  SP sDelete() {
+    Token deleteTok = need(TokenKind::Id, "expected 'delete'");
+    bool arrayDelete = false;
+    if (eat(TokenKind::LBra)) {
+      need(TokenKind::RBra, "expected ']' after 'delete['");
+      arrayDelete = true;
+    }
+    Token nameTok = need(TokenKind::Id, "expected variable name after delete/delete[]");
+    std::string freeFn;
+    auto itFree = varFreeFn_.find(nameTok.text);
+    if (itFree != varFreeFn_.end()) freeFn = itFree->second;
+    if (freeFn.empty()) {
+      freeFn = varClass_.count(nameTok.text) ? "object_free" : "mem_free";
+    }
+    std::vector<EP> args;
+    args.push_back(std::make_unique<EVar>(nameTok.text, nameTok.span));
+    EP call = std::make_unique<ECall>(freeFn, std::move(args), deleteTok.span);
+    needStmtEnd("expected statement terminator after delete/delete[]");
+    (void)arrayDelete;
+    return std::make_unique<SExpr>(std::move(call), deleteTok.span);
   }
 
   EP expr() { return logicOr(); }
@@ -2198,11 +2533,11 @@ private:
   EP unary() {
     if (eat(TokenKind::Minus)) {
       Token tok = t_[i_ - 1];
-      return std::make_unique<EUnary>(UK::Neg, unary(), tok.span);
+      return makeUnaryExpr(UK::Neg, unary(), tok.span);
     }
     if (eat(TokenKind::Bang)) {
       Token tok = t_[i_ - 1];
-      return std::make_unique<EUnary>(UK::Not, unary(), tok.span);
+      return makeUnaryExpr(UK::Not, unary(), tok.span);
     }
     return power();
   }
@@ -2221,6 +2556,34 @@ private:
         need(TokenKind::RPar, "expected ')'");
         if (e->k != EK::Var) throw CompileError(e->s, "callee must be function identifier");
         std::string fnName = canonicalSuperuserCallName(static_cast<EVar &>(*e).n);
+        if (fnName == "expand") {
+          if (a.size() != 1 || a[0]->k != EK::Call) {
+            throw CompileError(e->s, "expand expects exactly one macro call argument: expand(my_macro(...))");
+          }
+          auto &macroCall = static_cast<ECall &>(*a[0]);
+          const std::string macroName = macroCall.f;
+          auto itMacro = macros_.find(macroName);
+          if (itMacro == macros_.end()) {
+            throw CompileError(macroCall.s, "unknown macro '" + macroName + "'");
+          }
+          const MacroDecl &md = itMacro->second;
+          if (md.retKind != MacroArgKind::Expr || !md.bodyExpr) {
+            throw CompileError(macroCall.s, "macro '" + macroName + "' is not an expression macro");
+          }
+          if (macroCall.a.size() != md.params.size()) {
+            throw CompileError(
+                macroCall.s, "macro '" + macroName + "' expects " + std::to_string(md.params.size()) + " args");
+          }
+          std::unordered_map<std::string, const Expr *> subs;
+          for (std::size_t mi = 0; mi < md.params.size(); ++mi) {
+            if (md.params[mi].kind != MacroArgKind::Expr) {
+              throw CompileError(macroCall.s, "macro '" + macroName + "' currently supports expr params only");
+            }
+            subs[md.params[mi].name] = macroCall.a[mi].get();
+          }
+          e = substMacroExpr(*md.bodyExpr, subs);
+          continue;
+        }
         e = std::make_unique<ECall>(fnName, std::move(a), e->s);
         continue;
       }
@@ -2290,11 +2653,14 @@ private:
             e = std::make_unique<EVar>(canonicalSuperuserNamespaceSymbol(receiver) + "." + memberTok.text,
                                        memberTok.span);
           } else {
-            std::optional<Type> fieldType = findFieldTypeRecursive(className, memberTok.text);
-            if (!fieldType.has_value()) {
+            const FieldInfo *fieldInfo = findFieldRecursive(className, memberTok.text);
+            if (!fieldInfo) {
               throw CompileError(memberTok.span, "class '" + className + "' has no field '" + memberTok.text + "'");
             }
-            e = makeFieldLoadExpr(receiver, memberTok.text, *fieldType, memberTok.span);
+            if (!canAccessField(*fieldInfo, currentClass_)) {
+              throw CompileError(memberTok.span, "field '" + memberTok.text + "' is not accessible in this context");
+            }
+            e = makeFieldLoadExpr(receiver, memberTok.text, fieldInfo->t, memberTok.span);
           }
         }
         continue;
@@ -2327,6 +2693,12 @@ private:
     }
     if (eat(TokenKind::Id)) {
       Token tok = t_[i_ - 1];
+      if (tok.text == "quote") {
+        need(TokenKind::LBra, "expected '{' after quote");
+        EP quoted = expr();
+        need(TokenKind::RBra, "expected '}' after quote expression");
+        return quoted;
+      }
       return std::make_unique<EVar>(tok.text, tok.span);
     }
     if (eat(TokenKind::Dot)) {
@@ -2405,6 +2777,11 @@ private:
   static bool isPrintable(Type t) {
     return t == Type::I32 || t == Type::I64 || t == Type::F32 || t == Type::F64 || t == Type::Bool ||
            t == Type::Str;
+  }
+  static bool isRawMemFunction(const std::string &name) {
+    return name == "mem_alloc" || name == "mem_realloc" || name == "mem_free" || name == "mem_set" ||
+           name == "mem_copy" || name == "mem_read_i64" || name == "mem_write_i64" || name == "mem_read_f64" ||
+           name == "mem_write_f64";
   }
   static bool isLiteralZero(const Expr &e) {
     if (e.k == EK::Int) return static_cast<const EInt &>(e).v == 0;
@@ -2488,7 +2865,7 @@ private:
   }
   void warn(const Span &s, const std::string &m) {
     std::ostringstream o;
-    o << "line " << s.line << ", col " << s.col << ": " << m;
+    o << "line " << s.line << ", col " << s.col << ": warning: " << m;
     warnings_.push_back(o.str());
   }
 
@@ -3045,6 +3422,36 @@ private:
     case EK::Unary: {
       auto &n = static_cast<EUnary &>(e);
       Type t = expr(*n.x, l, throwsAllowed);
+      auto tryResolvedUnaryOperator = [&](const std::string &sym) -> std::optional<Type> {
+        if (sym.empty()) return std::nullopt;
+        auto itOp = sig_.find(sym);
+        if (itOp == sig_.end()) return std::nullopt;
+        const Sig &sg = itOp->second;
+        if (sg.p.size() != 1) {
+          if (superuserMode_) {
+            warn(e.s, "superuser mode: unary operator override '" + unaryOperatorSymbolText(n.op) +
+                           "' has invalid arity (continuing)");
+          } else {
+            throw CompileError(e.s, "unary operator override '" + unaryOperatorSymbolText(n.op) +
+                                         "' must have 1 parameter");
+          }
+          return std::nullopt;
+        }
+        if (!can(t, sg.p[0])) return std::nullopt;
+        n.overrideFn = sym;
+        return sg.r;
+      };
+
+      if (!n.overrideFn.empty()) {
+        if (auto memberRt = tryResolvedUnaryOperator(n.overrideFn)) {
+          return mark(*memberRt);
+        }
+        n.overrideFn.clear();
+      }
+      const std::string unaryOverride = unaryOperatorOverrideSymbol(n.op);
+      if (auto freeRt = tryResolvedUnaryOperator(unaryOverride)) {
+        return mark(*freeRt);
+      }
       if (n.op == UK::Neg) {
         if (!isNum(t)) return failType(e.s, "unary '-' requires numeric", Type::I64);
         return mark(t);
@@ -3135,6 +3542,10 @@ private:
     case EK::Call: {
       auto &n = static_cast<ECall &>(e);
       const std::string fnName = canonicalSuperuserCallName(n.f);
+      if (isRawMemFunction(fnName)) {
+        warn(e.s, "raw memory API '" + fnName +
+                      "' used directly; prefer typed ptr/slice wrappers and isolate raw access to audited blocks");
+      }
       if (fnName == "superuser") {
         if (!n.a.empty()) failVoid(e.s, "function 'superuser' expects 0 args");
         return mark(Type::Void);
@@ -3322,7 +3733,7 @@ static EP cloneE(const Expr &e) {
   case EK::Var: return std::make_unique<EVar>(static_cast<const EVar &>(e).n, e.s);
   case EK::Unary: {
     auto &n = static_cast<const EUnary &>(e);
-    return std::make_unique<EUnary>(n.op, cloneE(*n.x), e.s);
+    return std::make_unique<EUnary>(n.op, cloneE(*n.x), e.s, n.overrideFn);
   }
   case EK::Binary: {
     auto &n = static_cast<const EBinary &>(e);
@@ -3353,7 +3764,7 @@ static EP substE(const Expr &e, const std::unordered_map<std::string, const Expr
   case EK::Str: return std::make_unique<EString>(static_cast<const EString &>(e).v, e.s);
   case EK::Unary: {
     auto &n = static_cast<const EUnary &>(e);
-    return std::make_unique<EUnary>(n.op, substE(*n.x, subs), e.s);
+    return std::make_unique<EUnary>(n.op, substE(*n.x, subs), e.s, n.overrideFn);
   }
   case EK::Binary: {
     auto &n = static_cast<const EBinary &>(e);
@@ -4131,12 +4542,16 @@ static std::optional<int64_t> checkedI128ToI64(__int128 v) {
   return static_cast<int64_t>(v);
 }
 
+static bool gOptHasUnaryNegOverride = false;
+
 static std::optional<int64_t> evalConstI64Expr(const Expr &expr) {
   switch (expr.k) {
   case EK::Int:
     return static_cast<const EInt &>(expr).v;
   case EK::Unary: {
     const auto &u = static_cast<const EUnary &>(expr);
+    if (!u.overrideFn.empty()) return std::nullopt;
+    if (u.op == UK::Neg && gOptHasUnaryNegOverride) return std::nullopt;
     if (u.op != UK::Neg) return std::nullopt;
     auto v = evalConstI64Expr(*u.x);
     if (!v) return std::nullopt;
@@ -4176,6 +4591,8 @@ static std::optional<AffineI64Const> affineI64ConstExpr(const Expr &expr, const 
   }
   case EK::Unary: {
     const auto &u = static_cast<const EUnary &>(expr);
+    if (!u.overrideFn.empty()) return std::nullopt;
+    if (u.op == UK::Neg && gOptHasUnaryNegOverride) return std::nullopt;
     if (u.op != UK::Neg) return std::nullopt;
     auto in = affineI64ConstExpr(*u.x, loopVar);
     if (!in) return std::nullopt;
@@ -4243,6 +4660,8 @@ static std::optional<Linear2I64Const> linear2I64ConstExpr(const Expr &expr, cons
   }
   case EK::Unary: {
     const auto &u = static_cast<const EUnary &>(expr);
+    if (!u.overrideFn.empty()) return std::nullopt;
+    if (u.op == UK::Neg && gOptHasUnaryNegOverride) return std::nullopt;
     if (u.op != UK::Neg) return std::nullopt;
     auto in = linear2I64ConstExpr(*u.x, xVar, yVar);
     if (!in) return std::nullopt;
@@ -4342,6 +4761,8 @@ static std::optional<Poly2I64Const> poly2ConstI64Expr(const Expr &expr, const st
   }
   case EK::Unary: {
     const auto &u = static_cast<const EUnary &>(expr);
+    if (!u.overrideFn.empty()) return std::nullopt;
+    if (u.op == UK::Neg && gOptHasUnaryNegOverride) return std::nullopt;
     if (u.op != UK::Neg) return std::nullopt;
     auto in = poly2ConstI64Expr(*u.x, loopVar);
     if (!in) return std::nullopt;
@@ -4576,6 +4997,8 @@ static std::optional<int64_t> evalConstI64WithEnv(
   }
   case EK::Unary: {
     const auto &u = static_cast<const EUnary &>(expr);
+    if (!u.overrideFn.empty()) return std::nullopt;
+    if (u.op == UK::Neg && gOptHasUnaryNegOverride) return std::nullopt;
     if (u.op != UK::Neg) return std::nullopt;
     auto x = evalConstI64WithEnv(*u.x, env);
     if (!x) return std::nullopt;
@@ -4906,6 +5329,7 @@ static bool optE(EP &e, const std::unordered_map<std::string, const Fn *> &cand)
   case EK::Unary: {
     auto &n = static_cast<EUnary &>(*e);
     ch |= optE(n.x, cand);
+    if (!n.overrideFn.empty()) return ch;
     if (n.op == UK::Neg) {
       if (auto i = litI(*n.x)) { e = std::make_unique<EInt>(-*i, n.s); return true; }
       if (auto f = litF(*n.x)) { e = std::make_unique<EFloat>(-*f, n.s); return true; }
@@ -5534,6 +5958,13 @@ static void optimize(Program &p, int passes) {
   (void)passes;
   return;
 #else
+  gOptHasUnaryNegOverride = false;
+  for (const Fn &f : p.f) {
+    if (f.n == unaryOperatorOverrideSymbol(UK::Neg)) {
+      gOptHasUnaryNegOverride = true;
+      break;
+    }
+  }
   for (int k = 0; k < passes; ++k) {
     auto c = inlineCands(p);
     bool ch = false;
@@ -5541,6 +5972,7 @@ static void optimize(Program &p, int passes) {
       if (!f.ex) ch |= optBlock(f.b, c, false);
     if (!ch) break;
   }
+  gOptHasUnaryNegOverride = false;
 #endif
 }
 
@@ -5991,6 +6423,8 @@ private:
     }
     case EK::Unary: {
       const auto &u = static_cast<const EUnary &>(expr);
+      if (!u.overrideFn.empty()) return std::nullopt;
+      if (u.op == UK::Neg && gOptHasUnaryNegOverride) return std::nullopt;
       if (u.op != UK::Neg) return std::nullopt;
       auto inner = affineI64Expr(*u.x, loopVar);
       if (!inner) return std::nullopt;
@@ -5998,6 +6432,7 @@ private:
     }
     case EK::Binary: {
       const auto &bin = static_cast<const EBinary &>(expr);
+      if (!bin.overrideFn.empty()) return std::nullopt;
       if (bin.op == BK::Add || bin.op == BK::Sub) {
         auto l = affineI64Expr(*bin.l, loopVar);
         auto r = affineI64Expr(*bin.r, loopVar);
@@ -9592,6 +10027,9 @@ private:
     case EK::Var: return static_cast<const EVar &>(x).n;
     case EK::Unary: {
       auto &n = static_cast<const EUnary &>(x);
+      if (!n.overrideFn.empty()) {
+        return cFnName(n.overrideFn) + "(" + e(*n.x) + ")";
+      }
       return "(" + uop(n.op) + e(*n.x) + ")";
     }
     case EK::Binary: {
@@ -10393,10 +10831,162 @@ static std::string readFile(const std::filesystem::path &p) {
 }
 
 static void writeFile(const std::filesystem::path &p, const std::string &c) {
+  if (!p.parent_path().empty()) {
+    std::filesystem::create_directories(p.parent_path());
+  }
   std::ofstream out(p, std::ios::binary | std::ios::trunc);
   if (!out) throw std::runtime_error("failed to write: " + p.string());
   out << c;
   if (!out) throw std::runtime_error("failed writing: " + p.string());
+}
+
+static uint64_t fnv1a64(const std::string &s, uint64_t seed = 1469598103934665603ULL) {
+  uint64_t h = seed;
+  for (unsigned char c : s) {
+    h ^= static_cast<uint64_t>(c);
+    h *= 1099511628211ULL;
+  }
+  return h;
+}
+static std::string hex64(uint64_t v) {
+  std::ostringstream o;
+  o << std::hex << std::setfill('0') << std::setw(16) << v;
+  return o.str();
+}
+static std::string jsonEscape(const std::string &in) {
+  std::ostringstream o;
+  for (unsigned char c : in) {
+    switch (c) {
+    case '\"': o << "\\\""; break;
+    case '\\': o << "\\\\"; break;
+    case '\b': o << "\\b"; break;
+    case '\f': o << "\\f"; break;
+    case '\n': o << "\\n"; break;
+    case '\r': o << "\\r"; break;
+    case '\t': o << "\\t"; break;
+    default:
+      if (c < 0x20) {
+        o << "\\u" << std::hex << std::setw(4) << std::setfill('0') << static_cast<int>(c) << std::dec;
+      } else {
+        o << static_cast<char>(c);
+      }
+      break;
+    }
+  }
+  return o.str();
+}
+static std::string jsonUnescape(const std::string &in) {
+  std::string out;
+  out.reserve(in.size());
+  for (std::size_t i = 0; i < in.size(); ++i) {
+    char c = in[i];
+    if (c != '\\') {
+      out.push_back(c);
+      continue;
+    }
+    if (i + 1 >= in.size()) break;
+    char n = in[++i];
+    switch (n) {
+    case '\"': out.push_back('\"'); break;
+    case '\\': out.push_back('\\'); break;
+    case '/': out.push_back('/'); break;
+    case 'b': out.push_back('\b'); break;
+    case 'f': out.push_back('\f'); break;
+    case 'n': out.push_back('\n'); break;
+    case 'r': out.push_back('\r'); break;
+    case 't': out.push_back('\t'); break;
+    case 'u':
+      // Keep simple and deterministic: unsupported unicode escapes are replaced with '?'
+      if (i + 4 < in.size()) i += 4;
+      out.push_back('?');
+      break;
+    default: out.push_back(n); break;
+    }
+  }
+  return out;
+}
+static std::optional<std::string> jsonExtractStringField(const std::string &json, const std::string &key) {
+  const std::string needle = "\"" + key + "\"";
+  std::size_t pos = json.find(needle);
+  if (pos == std::string::npos) return std::nullopt;
+  pos = json.find(':', pos + needle.size());
+  if (pos == std::string::npos) return std::nullopt;
+  ++pos;
+  while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos]))) ++pos;
+  if (pos >= json.size() || json[pos] != '"') return std::nullopt;
+  ++pos;
+  std::string raw;
+  bool esc = false;
+  for (; pos < json.size(); ++pos) {
+    char c = json[pos];
+    if (!esc && c == '"') {
+      return jsonUnescape(raw);
+    }
+    if (!esc && c == '\\') {
+      esc = true;
+      raw.push_back(c);
+      continue;
+    }
+    esc = false;
+    raw.push_back(c);
+  }
+  return std::nullopt;
+}
+static std::string computeSourceStateHash(const std::vector<std::filesystem::path> &inputs) {
+  uint64_t h = 1469598103934665603ULL;
+  for (const auto &p : inputs) {
+    h = fnv1a64(p.string(), h);
+    h = fnv1a64(readFile(p), h);
+  }
+  return hex64(h);
+}
+static std::string computeBuildConfigHash(const std::vector<std::filesystem::path> &inputs, const std::string &cc,
+                                          const std::string &backend, bool maxSpeed, int passes,
+                                          const std::string &target, const std::filesystem::path &sysroot,
+                                          const std::string &linker) {
+  uint64_t h = 1469598103934665603ULL;
+  h = fnv1a64("LineScript-compile-cache-v1", h);
+  h = fnv1a64(computeSourceStateHash(inputs), h);
+  h = fnv1a64(cc, h);
+  h = fnv1a64(backend, h);
+  h = fnv1a64(maxSpeed ? "1" : "0", h);
+  h = fnv1a64(std::to_string(passes), h);
+  h = fnv1a64(target, h);
+  h = fnv1a64(sysroot.string(), h);
+  h = fnv1a64(linker, h);
+  return hex64(h);
+}
+static void writeTypedIrBundle(const std::filesystem::path &outPath, const std::string &cCode,
+                               const std::string &sourceStateHash, const std::string &buildConfigHash) {
+  std::ostringstream o;
+  o << "{\n";
+  o << "  \"format\": \"linescript-typed-ir-v1\",\n";
+  o << "  \"source_hash\": \"" << jsonEscape(sourceStateHash) << "\",\n";
+  o << "  \"config_hash\": \"" << jsonEscape(buildConfigHash) << "\",\n";
+  o << "  \"c_code\": \"" << jsonEscape(cCode) << "\"\n";
+  o << "}\n";
+  writeFile(outPath, o.str());
+}
+static std::string readTypedIrBundle(const std::filesystem::path &inPath, std::string *sourceStateHashOut = nullptr,
+                                     std::string *buildConfigHashOut = nullptr) {
+  std::string json = readFile(inPath);
+  auto fmt = jsonExtractStringField(json, "format");
+  if (!fmt.has_value() || *fmt != "linescript-typed-ir-v1") {
+    throw std::runtime_error("unsupported typed IR format in " + inPath.string());
+  }
+  auto cCode = jsonExtractStringField(json, "c_code");
+  if (!cCode.has_value()) {
+    throw std::runtime_error("typed IR is missing c_code field: " + inPath.string());
+  }
+  if (sourceStateHashOut) {
+    auto sh = jsonExtractStringField(json, "source_hash");
+    *sourceStateHashOut = sh.value_or("");
+  }
+  if (buildConfigHashOut) {
+    auto ch = jsonExtractStringField(json, "config_hash");
+    *buildConfigHashOut = ch.value_or("");
+  }
+  return *cCode;
 }
 
 static bool gSuperuserVerbose = false;
@@ -10425,6 +11015,9 @@ struct Opt {
   std::filesystem::path out;
   std::string cc = "clang";
   std::string backend = "auto";
+  std::string target;
+  std::filesystem::path sysroot;
+  std::string linker;
   bool build = false;
   bool run = false;
   bool check = false;
@@ -10433,9 +11026,14 @@ struct Opt {
   int superuserVerbosity = 3;
   bool keepC = false;
   bool maxSpeed = false;
+  bool incremental = true;
+  bool noCache = false;
+  std::filesystem::path cacheDir = ".linescript/cache";
   bool pgoGenerate = false;
   std::filesystem::path pgoUseDir;
   std::filesystem::path boltUseFdata;
+  std::filesystem::path emitTypedIrPath;
+  std::filesystem::path consumeTypedIrPath;
   int passes = 12;
   bool infoOnly = false;
   std::vector<std::string> infoMessages;
@@ -10511,7 +11109,15 @@ static void usage() {
   std::cerr << "  --shell         alias for --repl\n";
   std::cerr << "  --cc <name>     C compiler command (default: clang)\n";
   std::cerr << "  --backend <x>   backend: auto|c|asm (default: auto)\n";
+  std::cerr << "  --target <triple> cross-compile target triple (clang/lld path)\n";
+  std::cerr << "  --sysroot <path> sysroot for cross-compilation\n";
+  std::cerr << "  --linker <name> linker override (for example lld)\n";
   std::cerr << "  --passes <n>    greedy optimization passes (default: 12)\n";
+  std::cerr << "  --incremental   enable incremental compile cache (default on)\n";
+  std::cerr << "  --cache-dir <path> incremental cache directory (default .linescript/cache)\n";
+  std::cerr << "  --no-cache      disable incremental cache for this invocation\n";
+  std::cerr << "  --emit-typed-ir <file.json> write typed IR JSON bundle for this compile\n";
+  std::cerr << "  --consume-typed-ir <file.json> build from typed IR JSON (skip frontend parse/type-check)\n";
   std::cerr << "  -O4             primary max-speed profile (preferred)\n";
   std::cerr << "  --max-speed     compatibility alias for -O4\n";
   std::cerr << "  --pgo-generate  build instrumented binary for profile capture (max-speed pipeline)\n";
@@ -10539,6 +11145,22 @@ static bool isSourceExt(const std::filesystem::path &p) {
 static bool isValidBackend(const std::string &backend) {
   const std::string b = lower(backend);
   return b == "auto" || b == "c" || b == "asm";
+}
+static bool isValidTargetTriple(const std::string &triple) {
+  if (triple.empty()) return false;
+  for (char c : triple) {
+    const unsigned char u = static_cast<unsigned char>(c);
+    if (!(std::isalnum(u) || c == '_' || c == '-' || c == '.')) return false;
+  }
+  return true;
+}
+static bool isSafeLinkerName(const std::string &name) {
+  if (name.empty()) return false;
+  for (char c : name) {
+    const unsigned char u = static_cast<unsigned char>(c);
+    if (!(std::isalnum(u) || c == '_' || c == '-' || c == '.' || c == '/' || c == '\\' || c == ':')) return false;
+  }
+  return true;
 }
 static bool isSafeCompilerCmdChar(char c) {
   const unsigned char u = static_cast<unsigned char>(c);
@@ -10654,6 +11276,29 @@ static Opt parseOpt(int argc, char **argv) {
     } else if (a == "--backend") {
       if (i + 1 >= argc) throw std::runtime_error("missing value for --backend");
       o.backend = argv[++i];
+    } else if (a == "--target") {
+      if (i + 1 >= argc) throw std::runtime_error("missing value for --target");
+      o.target = argv[++i];
+    } else if (a == "--sysroot") {
+      if (i + 1 >= argc) throw std::runtime_error("missing value for --sysroot");
+      o.sysroot = argv[++i];
+    } else if (a == "--linker") {
+      if (i + 1 >= argc) throw std::runtime_error("missing value for --linker");
+      o.linker = argv[++i];
+    } else if (a == "--incremental") {
+      o.incremental = true;
+    } else if (a == "--cache-dir") {
+      if (i + 1 >= argc) throw std::runtime_error("missing value for --cache-dir");
+      o.cacheDir = argv[++i];
+    } else if (a == "--no-cache") {
+      o.noCache = true;
+      o.incremental = false;
+    } else if (a == "--emit-typed-ir") {
+      if (i + 1 >= argc) throw std::runtime_error("missing value for --emit-typed-ir");
+      o.emitTypedIrPath = argv[++i];
+    } else if (a == "--consume-typed-ir") {
+      if (i + 1 >= argc) throw std::runtime_error("missing value for --consume-typed-ir");
+      o.consumeTypedIrPath = argv[++i];
     } else if (a == "--passes") {
       if (i + 1 >= argc) throw std::runtime_error("missing value for --passes");
       o.passes = std::stoi(argv[++i]);
@@ -10708,15 +11353,42 @@ static Opt parseOpt(int argc, char **argv) {
     o.superuserVerbosity = 3;
   }
   if (o.inputs.empty() && !o.repl) {
-    if (!o.infoMessages.empty() && !o.check && !o.build && !o.run) {
+    if (!o.consumeTypedIrPath.empty()) {
+      // allowed: build/run directly from typed IR bundle
+    } else if (!o.infoMessages.empty() && !o.check && !o.build && !o.run) {
       o.infoOnly = true;
       return o;
+    } else {
+      throw std::runtime_error("input file is required");
     }
-    throw std::runtime_error("input file is required");
   }
   validateCompilerCommand(o.cc);
   if (!isValidBackend(o.backend)) {
     throw std::runtime_error("invalid --backend value (expected auto|c|asm): " + o.backend);
+  }
+  if (!o.target.empty() && !isValidTargetTriple(o.target)) {
+    throw std::runtime_error("invalid --target triple: " + o.target);
+  }
+  if (!o.linker.empty() && !isSafeLinkerName(o.linker)) {
+    throw std::runtime_error("invalid --linker value: " + o.linker);
+  }
+  if (!o.sysroot.empty()) {
+    validatePathForShell(o.sysroot, "sysroot path");
+  }
+  if (!o.cacheDir.empty()) {
+    validatePathForShell(o.cacheDir, "cache directory path");
+  }
+  if (!o.emitTypedIrPath.empty()) {
+    validatePathForShell(o.emitTypedIrPath, "emit typed ir path");
+  }
+  if (!o.consumeTypedIrPath.empty()) {
+    validatePathForShell(o.consumeTypedIrPath, "consume typed ir path");
+  }
+  if (!o.consumeTypedIrPath.empty() && !o.build && !o.run) {
+    throw std::runtime_error("--consume-typed-ir requires --build or --run");
+  }
+  if (!o.consumeTypedIrPath.empty() && o.check) {
+    throw std::runtime_error("--consume-typed-ir cannot be combined with --check");
   }
   if (o.pgoGenerate && !o.build) {
     throw std::runtime_error("--pgo-generate requires --build or --run");
@@ -11205,6 +11877,22 @@ static int runRepl(const Opt &o, const std::string &argv0) {
   return 0;
 }
 
+static void inferDepsFromCCode(const std::string &cCode, bool &hasParallelFor, bool &hasWinGraphicsDep, bool &hasWinNetDep,
+                               bool &hasPosixThreadDep, bool &ultraMinimalRuntime, bool &hasInteractiveInput) {
+  auto hasAny = [&](std::initializer_list<const char *> needles) -> bool {
+    for (const char *needle : needles) {
+      if (cCode.find(needle) != std::string::npos) return true;
+    }
+    return false;
+  };
+  hasParallelFor = hasAny({"#define LS_PAR_FOR", "omp parallel for"});
+  hasWinGraphicsDep = hasAny({"GetAsyncKeyState", "CreateWindowA", "game_new(", "pg_init("});
+  hasWinNetDep = hasAny({"WSAStartup", "http_server_listen(", "http_client_connect("});
+  hasPosixThreadDep = hasAny({"pthread_create", "pthread_join"});
+  ultraMinimalRuntime = hasAny({"ls_stdout_handle", "LS_THREAD_LOCAL"});
+  hasInteractiveInput = hasAny({"input_prompt(", "input_i64_prompt(", "input_f64_prompt("});
+}
+
 static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, bool hasParallelFor,
                   bool hasWinGraphicsDep, bool hasWinNetDep, bool hasPosixThreadDep, bool ultraMinimalRuntime,
                   bool hasInteractiveInput, bool superuserMode, bool superuserIrDump) {
@@ -11217,7 +11905,9 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   (void)hasWinNetDep;
   (void)hasWinGraphicsDep;
 #endif
-  const std::filesystem::path primaryIn = o.inputs.front();
+  const std::filesystem::path primaryIn =
+      !o.inputs.empty() ? o.inputs.front()
+                        : (!o.consumeTypedIrPath.empty() ? o.consumeTypedIrPath : std::filesystem::path("typed_ir_input.lsc"));
   if (!o.build) {
     auto out = o.out.empty() ? std::filesystem::path(primaryIn).replace_extension(".c") : o.out;
     validatePathForShell(out, "output path");
@@ -11268,6 +11958,25 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   const bool msvcLike =
       ccNorm == "cl" || ccNorm == "cl.exe" || ccNorm.find("\\cl.exe") != std::string::npos ||
       ccNorm.find("/cl.exe") != std::string::npos || ccNorm.find("clang-cl") != std::string::npos;
+  std::string crossFlags;
+  if (!o.target.empty()) {
+    if (msvcLike) {
+      throw std::runtime_error("--target is only supported on clang/gcc-style toolchains");
+    }
+    crossFlags += " --target=" + o.target;
+  }
+  if (!o.sysroot.empty()) {
+    if (msvcLike) {
+      throw std::runtime_error("--sysroot is only supported on clang/gcc-style toolchains");
+    }
+    crossFlags += " --sysroot=" + q(o.sysroot);
+  }
+  if (!o.linker.empty()) {
+    if (msvcLike) {
+      throw std::runtime_error("--linker is only supported on clang/gcc-style toolchains");
+    }
+    crossFlags += " -fuse-ld=" + o.linker;
+  }
   std::string pgoFlags;
   if (o.pgoGenerate) {
     if (clangLike) {
@@ -11415,9 +12124,17 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
   int rc = 1;
   std::string usedFlags;
   std::string usedBackend = "c";
+  auto execBuildCmd = [&](const std::string &cmd) -> int {
+    if (superuserMode) return std::system(cmd.c_str());
+#if defined(_WIN32)
+    return std::system((cmd + " >nul 2>nul").c_str());
+#else
+    return std::system((cmd + " >/dev/null 2>/dev/null").c_str());
+#endif
+  };
   std::vector<std::string> cppFallbackCommands = {"clang++", "g++"};
   for (const std::string &flags : flagSets) {
-    const std::string activeFlags = trimCopy(flags + pgoFlags);
+    const std::string activeFlags = trimCopy(flags + pgoFlags + crossFlags);
     if (tryAsmBackend) {
       const std::string asmFlags = flagsForAsmEmit(activeFlags);
       const std::string asmLinkFlags = flagsForAsmLink(activeFlags);
@@ -11427,13 +12144,13 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
       std::ostringstream asmEmit;
       asmEmit << qCmd(o.cc) << " " << asmFlags << " -fno-lto -S -masm=intel " << q(c) << " -o " << q(asmTmp);
       if (superuserMode) superuserLogV(4, "exec (asm emit): " + asmEmit.str());
-      rc = std::system(asmEmit.str().c_str());
+      rc = execBuildCmd(asmEmit.str());
       if (rc == 0) {
         if (superuserMode) superuserLogV(3, "ASM emit succeeded; linking ASM backend");
         std::ostringstream asmLink;
         asmLink << qCmd(o.cc) << " " << asmLinkFlags << " " << q(asmTmp) << " -o " << q(bin) << linkSuffix;
         if (superuserMode) superuserLogV(4, "exec (asm link): " + asmLink.str());
-        rc = std::system(asmLink.str().c_str());
+        rc = execBuildCmd(asmLink.str());
         if (rc == 0) {
           usedFlags = activeFlags;
           usedBackend = "asm";
@@ -11446,7 +12163,7 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
         std::ostringstream cppCmd;
         cppCmd << qCmd(cppCmdName) << " " << activeFlags << " " << q(c) << " -o " << q(bin) << linkSuffix;
         if (superuserMode) superuserLogV(4, "exec (cpp fallback): " + cppCmd.str());
-        rc = std::system(cppCmd.str().c_str());
+        rc = execBuildCmd(cppCmd.str());
         if (rc == 0) {
           usedFlags = activeFlags;
           usedBackend = "cpp-fallback";
@@ -11460,7 +12177,7 @@ static int finish(const Opt &o, const std::string &cCode, bool cleanOutputMode, 
     cmd << qCmd(o.cc) << " " << activeFlags << " " << q(c) << " -o " << q(bin) << linkSuffix;
     if (superuserMode) superuserLogV(3, "trying C backend flags: " + activeFlags);
     if (superuserMode) superuserLogV(4, "exec (c backend): " + cmd.str());
-    rc = std::system(cmd.str().c_str());
+    rc = execBuildCmd(cmd.str());
     if (rc == 0) {
       usedFlags = activeFlags;
       usedBackend = "c";
@@ -11516,6 +12233,36 @@ int main(int argc, char **argv) {
     if (o.infoOnly) return 0;
     if (o.repl) {
       return ls::runRepl(o, (argc > 0 && argv[0] != nullptr) ? argv[0] : "lsc");
+    }
+    std::string incrementalConfigHash;
+    std::filesystem::path incrementalTypedIrPath;
+    if (o.incremental && !o.noCache && !o.inputs.empty()) {
+      incrementalConfigHash = ls::computeBuildConfigHash(o.inputs, o.cc, o.backend, o.maxSpeed, o.passes, o.target,
+                                                         o.sysroot, o.linker);
+      incrementalTypedIrPath = o.cacheDir / (incrementalConfigHash + ".typed_ir.json");
+    }
+    if (o.consumeTypedIrPath.empty() && !incrementalTypedIrPath.empty() && !o.check && std::filesystem::exists(incrementalTypedIrPath)) {
+      o.consumeTypedIrPath = incrementalTypedIrPath;
+      if (!o.infoMessages.empty()) {
+        std::cout << "Using cached typed IR: " << o.consumeTypedIrPath.string() << '\n';
+      }
+    }
+    if (!o.consumeTypedIrPath.empty()) {
+      bool hasParallelFor = false;
+      bool hasWinGraphicsDep = false;
+      bool hasWinNetDep = false;
+      bool hasPosixThreadDep = false;
+      bool ultraMinimalRuntime = false;
+      bool hasInteractiveInput = false;
+      const std::string cOut = ls::readTypedIrBundle(o.consumeTypedIrPath);
+      ls::inferDepsFromCCode(cOut, hasParallelFor, hasWinGraphicsDep, hasWinNetDep, hasPosixThreadDep,
+                             ultraMinimalRuntime, hasInteractiveInput);
+      if (!o.emitTypedIrPath.empty()) {
+        const std::string emptyHash;
+        ls::writeTypedIrBundle(o.emitTypedIrPath, cOut, emptyHash, incrementalConfigHash);
+      }
+      return ls::finish(o, cOut, false, hasParallelFor, hasWinGraphicsDep, hasWinNetDep, hasPosixThreadDep,
+                        ultraMinimalRuntime, hasInteractiveInput, o.superuserSession, false);
     }
     ls::setSuperuserLogging(o.superuserSession, false, o.superuserVerbosity);
     ls::Program p;
@@ -11684,6 +12431,15 @@ int main(int argc, char **argv) {
     if (superuserMode) ls::superuserLogV(2, "stage: re-type-check begin");
     ls::TypeCheck tc2(p, superuserMode);
     tc2.run();
+    {
+      std::unordered_set<std::string> seenWarnings;
+      for (const auto &w : tc.warnings()) {
+        if (seenWarnings.insert(w).second) std::cerr << w << '\n';
+      }
+      for (const auto &w : tc2.warnings()) {
+        if (seenWarnings.insert(w).second) std::cerr << w << '\n';
+      }
+    }
     if (superuserMode) {
       for (const auto &w : tc2.warnings()) ls::superuserLogV(1, "re-type-check warning: " + w);
       ls::superuserLogV(2, "stage: optimize/re-type-check complete");
@@ -11723,6 +12479,13 @@ int main(int argc, char **argv) {
                                      ls::hasCallNamedProgram(p, "input_f64");
     if (superuserMode) ls::superuserLogV(2, "emitting C backend source");
     const std::string cOut = ec.run();
+    const std::string sourceStateHash = o.inputs.empty() ? std::string() : ls::computeSourceStateHash(o.inputs);
+    if (!o.emitTypedIrPath.empty()) {
+      ls::writeTypedIrBundle(o.emitTypedIrPath, cOut, sourceStateHash, incrementalConfigHash);
+    }
+    if (!incrementalTypedIrPath.empty() && !o.check) {
+      ls::writeTypedIrBundle(incrementalTypedIrPath, cOut, sourceStateHash, incrementalConfigHash);
+    }
     return ls::finish(o, cOut, cleanOutputMode, hasParallelFor, hasWinGraphicsDep, hasWinNetDep, hasPosixThreadDep,
                       ultraMinimalRuntime, hasInteractiveInput, superuserMode, ec.superuserIrDumpRequested());
   } catch (const ls::CompileError &e) {

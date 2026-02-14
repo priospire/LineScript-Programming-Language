@@ -18,6 +18,20 @@ LineScript supports C++-style class syntax:
 
 Under the hood, class instances are handle-backed (`i64`) objects. That keeps syntax high-level while preserving speed-focused native compilation.
 
+## Advanced OOP Additions
+
+LineScript now supports the following advanced OOP-adjacent features in class-heavy code:
+- generic handle type annotations: `array<T>`, `ptr<T>`, `slice<T>`
+- explicit lifetime operations: `delete x` and `delete[] x`
+- expression macros for reusable compile-time OOP snippets:
+ - `macro name(args...) -> expr do ... end`
+ - `expand(name(...))`
+
+Notes:
+- `array<T>`, `ptr<T>`, and `slice<T>` are currently handle-backed (`i64`) at runtime.
+- `delete[]` is accepted for parity with C++-style array cleanup intent.
+- expression macros are available now; `stmt`/`item` macro return kinds are reserved for a later milestone.
+
 ## Class Syntax
 
 ### `do/end` style
@@ -145,6 +159,9 @@ Method modifiers:
 - access control: `public`, `protected`, `private`
 - dispatch/lifecycle: `virtual`, `override`, `final`
 - `static` methods callable from class name
+- operator methods:
+ - binary: `fn operator +(rhs: i64) -> i64 do ... end`
+ - unary: `fn operator unary -() -> i64 do ... end`
 
 Rules:
 - methods can be overloaded by parameter type list
@@ -153,6 +170,9 @@ Rules:
 - duplicate overload signatures in the same class are not allowed
 - `override` requires a compatible base method
 - overriding `final` methods is rejected
+- unary operator method arity is strict:
+ - `operator unary ...` method must take `0` explicit parameters
+ - top-level `operator unary ...` function must take `1` parameter
 
 ## `this` and Member Access
 
@@ -178,6 +198,59 @@ MathUtil.scale(5)
 ```
 
 Supported member writes include normal and compound assignments (`=`, `+=`, `-=`, `*=`, `/=`, `%=` and power-assign forms where valid).
+
+Field access control is enforced for reads and writes:
+- `public`: accessible from anywhere
+- `private`: only inside the declaring class
+- `protected`: inside declaring class and subclasses
+
+## `delete` and `delete[]`
+
+You can release handle-backed resources explicitly:
+
+```linescript
+delete obj
+delete[] arr
+```
+
+Behavior:
+- for class instances: lowers to object-handle release (`object_free`)
+- for known handle constructors (`array_new`, `dict_new`, `map_new`, `np_new`, etc.): lowers to matching free call
+- fallback path is raw pointer free (`mem_free`) when no constructor mapping is known
+
+This keeps syntax simple while allowing explicit, deterministic cleanup in OOP-style programs.
+
+## Pointer/Array Type Annotations
+
+LineScript supports handle-generic annotations:
+
+```linescript
+declare buf: ptr<byte> = mem_alloc(64)
+declare names: array<str> = array_new()
+declare view: slice<i64> = buf
+```
+
+Notes:
+- these are currently handle-backed (`i64`) at runtime
+- they are intended for explicit intent and safer API contracts in class-heavy code
+- supported inner types: primitive types, `str`, and known class types
+
+## OOP + Generic Handle Types
+
+You can annotate OOP-facing APIs with handle-generic types:
+
+```linescript
+fn consume_points(points: array<i64>) -> i64 do
+  return array_len(points)
+end
+
+fn move_cursor(buf: ptr<byte>, offset: i64) -> ptr<byte> do
+  // currently handle-backed; pointer arithmetic helpers are runtime-level
+  return buf
+end
+```
+
+Inner generic types currently supported: `i32`, `i64`, `f32`, `f64`, `bool`, `byte`.
 
 ## Class Types in Signatures
 
@@ -361,6 +434,7 @@ end
 - single inheritance only
 - constructors are single-definition per class (no ctor overloading yet)
 - class fields are currently handle-backed at runtime (`i64` under the hood)
+- operator overloading currently supports unary (`-`, `!`) and binary arithmetic/comparison/logical operators
 
 ## Performance Notes
 

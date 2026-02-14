@@ -205,12 +205,27 @@ end
 ```
 
 - operator resolution order is: class member overload, then free overload, then built-in operator.
-- class operator methods must take exactly 1 parameter (the right-hand side); free operator overrides must take 2 parameters.
+- class operator methods:
+ - binary form: exactly `1` parameter (right-hand side)
+ - unary form: exactly `0` parameters (`operator unary -`, `operator unary !`)
+- free operator overrides:
+ - binary form: exactly `2` parameters
+ - unary form: exactly `1` parameter
+- unary override example:
+
+```linescript
+operator unary -(x: i64) -> i64 do
+  return x + 100
+end
+```
+
 - use `this.field` / `this.method(...)` inside class members.
 - use `obj.field`, `obj.field = ...`, `obj.field += ...`, and `obj.method(...)` outside.
 - static methods must be called via class name: `ClassName.method(...)`.
+- field access modifiers are enforced for reads and writes (`public`/`protected`/`private`).
 - class names are valid type annotations and map to handle type `i64` internally.
 - class fields can use `i32`/`f32` (optional), or stay with `i64`/`f64`.
+- handle-generic type annotations are supported: `ptr<T>`, `slice<T>`, `array<T>`.
 - complete OOP reference and examples: `docs/OOP.md`.
 
 ## 5. Block Styles
