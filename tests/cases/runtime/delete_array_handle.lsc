@@ -1,0 +1,7 @@
+main() -> i64 do
+  declare arr: array<i64> = array_new()
+  array_push(arr, "a")
+  delete[] arr
+  println(7)
+  return 0
+end

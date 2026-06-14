@@ -1,0 +1,8 @@
+main() -> i64 do
+  declare sum: i64 = 0
+  for i in 0..8 do
+    sum = sum + (i * 2)
+  end
+  println(sum)
+  return 0
+end

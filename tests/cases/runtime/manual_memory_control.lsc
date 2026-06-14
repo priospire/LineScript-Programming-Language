@@ -1,0 +1,13 @@
+main() -> i64 do
+  declare p: i64 = mem_alloc(16)
+  mem_write_i64(p, 123)
+  mem_write_f64(p + 8, 2.5)
+  println(mem_read_i64(p))
+  println(mem_read_f64(p + 8))
+  declare q: i64 = mem_realloc(p, 32)
+  println(mem_read_i64(q))
+  mem_set(q + 8, 0, 8)
+  println(mem_read_f64(q + 8))
+  mem_free(q)
+  return 0
+end

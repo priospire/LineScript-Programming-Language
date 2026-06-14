@@ -1,0 +1,10 @@
+main() -> i64 do
+  parallel for i in 0..2000 do
+    declare square = i * i
+    if square < 0 do
+      println(square)
+    end
+  end
+  println(1)
+  return 0
+end

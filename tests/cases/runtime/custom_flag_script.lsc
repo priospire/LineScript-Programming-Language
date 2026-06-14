@@ -1,0 +1,7 @@
+.format()
+
+flag hello() do
+  println("flag-hello")
+end
+
+println("script-ok")

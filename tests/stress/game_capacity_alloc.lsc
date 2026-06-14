@@ -1,0 +1,24 @@
+main() -> i64 do
+  declare ok: i64 = 0
+  declare last: i64 = -2
+
+  for i in 0..33 do
+    declare id = game_new(4, 4, "g", false)
+    if i < 32 do
+      if id >= 0 do
+        ok = ok + 1
+      end
+    else do
+      last = id
+    end
+  end
+
+  println(ok)
+  println(last)
+
+  for i in 0..32 do
+    game_free(i)
+  end
+
+  return 0
+end

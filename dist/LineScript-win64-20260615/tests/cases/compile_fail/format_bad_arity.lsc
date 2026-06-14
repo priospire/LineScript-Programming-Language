@@ -1,0 +1,4 @@
+main() -> i64 do
+  .format(1)
+  return 0
+end

@@ -1,0 +1,12 @@
+main() -> i64 do
+  declare x: i64 = 42
+  declare y: f64 = 3.5
+  declare b: bool = true
+  declare s: str = "LineScript"
+
+  println(formatOutput(x))
+  println(FormatOutput(y))
+  println(formatOutput(b))
+  println(FormatOutput(s))
+  return 0
+end

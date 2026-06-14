@@ -1,0 +1,30 @@
+fn ls_array3(a: str, b: str, c: str) -> i64 do
+  declare arr = array_new()
+  array_push(arr, a)
+  array_push(arr, b)
+  array_push(arr, c)
+  return arr
+end
+
+fn ls_array_push_if_missing(arr: i64, value: str) -> bool do
+  if array_includes(arr, value) do
+    return false
+  end
+  array_push(arr, value)
+  return true
+end
+
+fn ls_dict_get_or(d: i64, key: str, fallback: str) -> str do
+  if dict_has(d, key) do
+    return dict_get(d, key)
+  end
+  return fallback
+end
+
+fn ls_dict_put_if_missing(d: i64, key: str, value: str) -> bool do
+  if dict_has(d, key) do
+    return false
+  end
+  dict_set(d, key, value)
+  return true
+end

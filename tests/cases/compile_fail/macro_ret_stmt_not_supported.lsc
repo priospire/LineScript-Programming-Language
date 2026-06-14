@@ -1,0 +1,7 @@
+macro bad(x: expr) -> stmt do
+  x
+end
+
+main() -> i64 do
+  return 0
+end

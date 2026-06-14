@@ -1,0 +1,21 @@
+fn pick(v: i32) -> i64 do
+  return 32
+end
+
+fn pick(v: i64) -> i64 do
+  return 64
+end
+
+fn pick(v: f64) -> i64 do
+  return 640
+end
+
+main() -> i64 do
+  declare a: i32 = 1
+  declare b: i64 = 2
+  declare c: f32 = 3.0
+  println(pick(a))
+  println(pick(b))
+  println(pick(c))
+  return 0
+end

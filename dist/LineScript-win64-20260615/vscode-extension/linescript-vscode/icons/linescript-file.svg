@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1f1f1f"/>
+      <stop offset="100%" stop-color="#2c2c2c"/>
+    </linearGradient>
+    <linearGradient id="ls" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffd166"/>
+      <stop offset="100%" stop-color="#ff9f1c"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="14" fill="url(#bg)"/>
+  <!-- Extreme optical centering: intentionally shifted right for stubborn left drift. -->
+  <g transform="translate(78 64)">
+    <path d="M-22 -34 L32 -34 Q40 -34 36 -28 L22 -14 Q18 -10 10 -10 L-32 -10 Q-40 -10 -36 -16 L-22 -30 Q-18 -34 -10 -34 Z" fill="url(#ls)"/>
+    <path d="M-29 -4 L37 -4 Q45 -4 41 2 L27 16 Q23 20 15 20 L-37 20 Q-45 20 -41 14 L-27 0 Q-23 -4 -15 -4 Z" fill="url(#ls)"/>
+    <path d="M-20 26 L30 26 Q38 26 34 32 L22 44 Q18 48 10 48 L-30 48 Q-38 48 -34 42 L-22 30 Q-18 26 -10 26 Z" fill="url(#ls)"/>
+  </g>
+</svg>

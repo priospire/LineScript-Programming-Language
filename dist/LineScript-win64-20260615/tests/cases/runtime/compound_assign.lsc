@@ -1,0 +1,17 @@
+main() -> i64 do
+  declare x: i64 = 10
+  x -= 3
+  x += 5
+  x *= 4
+  x /= 3
+  x %= 7
+  x ^= 3
+  println(x)
+
+  declare y: f64 = 2.0
+  y += 1.5
+  y *= 2.0
+  y /= 3.0
+  println(y)
+  return 0
+end

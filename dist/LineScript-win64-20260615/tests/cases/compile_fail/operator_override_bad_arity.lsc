@@ -1,0 +1,3 @@
+operator +(a: i64) -> i64 do
+  return a
+end

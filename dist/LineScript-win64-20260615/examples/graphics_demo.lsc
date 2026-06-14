@@ -1,0 +1,25 @@
+main() -> i64 do
+  declare canvas = gfx_new(320, 200)
+  if canvas < 0 do
+    println("gfx init failed")
+    return 1
+  end
+
+  gfx_clear(canvas, 18, 22, 28)
+
+  for i in 0..100 do
+    gfx_line(canvas, 0, i * 2, 319, 199 - (i * 2), (i * 5) % 256, (i * 3) % 256, (i * 7) % 256)
+  end
+
+  gfx_rect(canvas, 20, 20, 120, 60, 255, 180, 30, false)
+  gfx_rect(canvas, 180, 90, 100, 80, 30, 200, 255, true)
+
+  if gfx_save_ppm(canvas, "examples/graphics_demo.ppm") do
+    println("saved examples/graphics_demo.ppm")
+  else do
+    println("save failed")
+  end
+
+  gfx_free(canvas)
+  return 0
+end

@@ -1,0 +1,46 @@
+main() -> i64 do
+  declare g = game_new(192, 108, "stress", false)
+  declare sp = gfx_new(8, 8)
+
+  gfx_clear(sp, 0, 0, 0)
+  for y in 0..8 do
+    for x in 0..8 do
+      if (x + y) % 2 == 0 do
+        gfx_set(sp, x, y, 255, 255, 255)
+      else do
+        gfx_set(sp, x, y, 30, 180, 255)
+      end
+    end
+  end
+
+  game_set_target_fps(g, 0)
+  game_set_fixed_dt(g, 0.0083333333333333)
+
+  declare acc: i64 = 0
+  for f in 0..240 do
+    game_begin(g)
+    game_clear(g, f % 256, (f * 3) % 256, (f * 7) % 256)
+
+    for x in 0..192 step 3 do
+      game_set(g, x, (x + f) % 108, (x + f) % 256, (x * 2) % 256, (f * 5) % 256)
+    end
+
+    for y in 0..108 step 4 do
+      game_line(g, 0, y, 191, 107 - y, (y * 11) % 256, (f * 13) % 256, (y + f) % 256)
+    end
+
+    game_rect(g, (f * 7) % 160, (f * 5) % 90, 20, 12, 255, 255, 0, false)
+    game_draw_gfx(g, sp, (f * 2) % 184, (f * 3) % 100)
+
+    acc = acc + (game_checksum(g) % 1000003)
+    game_end(g)
+  end
+
+  println(acc)
+  println(game_frame(g))
+  println(game_should_close(g))
+
+  gfx_free(sp)
+  game_free(g)
+  return 0
+end

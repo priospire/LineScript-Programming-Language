@@ -1,0 +1,29 @@
+fn ls_text_clean_lower(s: str) -> str do
+  return lower(trim(s))
+end
+
+fn ls_text_clean_upper(s: str) -> str do
+  return upper(trim(s))
+end
+
+fn ls_text_safe_substring(s: str, start: i64, count: i64) -> str do
+  if start < 0 do
+    return ""
+  end
+  if count < 0 do
+    return ""
+  end
+  return substring(s, start, count)
+end
+
+fn ls_text_has_word(s: str, word: str) -> bool do
+  return includes(s, word)
+end
+
+fn ls_text_repeat3(s: str) -> str do
+  return repeat(s, 3)
+end
+
+fn ls_text_reverse(s: str) -> str do
+  return reverse(s)
+end

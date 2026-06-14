@@ -1,0 +1,9 @@
+class A do
+  declare x: i64 = 0
+end
+
+main() -> i64 do
+  declare a = A()
+  a.y = 1
+  return 0
+end

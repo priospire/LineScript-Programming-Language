@@ -1,0 +1,9 @@
+class Vault do
+  private declare secret: i64 = 7
+end
+
+main() -> i64 do
+  declare v: Vault = Vault()
+  println(v.secret)
+  return 0
+end

@@ -1,0 +1,7 @@
+main() -> i64 do
+  for i in 0..2 do
+    declare owned arr = array_new()
+    println(array_len(arr))
+  end
+  return 0
+end

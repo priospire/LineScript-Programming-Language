@@ -1,0 +1,6 @@
+main() -> i64 do
+  println(2 ** 5)
+  println(3 ^ 4)
+  println(16 ** 0)
+  return 0
+end

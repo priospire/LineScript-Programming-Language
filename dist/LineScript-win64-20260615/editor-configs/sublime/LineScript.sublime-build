@@ -1,0 +1,13 @@
+{
+  "selector": "source.linescript",
+  "working_dir": "$project_path",
+  "windows": {
+    "shell_cmd": "\"${project_path}\\linescript.cmd\" \"$file\" -O4 --cc clang"
+  },
+  "linux": {
+    "shell_cmd": "\"${project_path}/linescript.sh\" \"$file\" -O4 --cc clang"
+  },
+  "osx": {
+    "shell_cmd": "\"${project_path}/linescript.sh\" \"$file\" -O4 --cc clang"
+  }
+}

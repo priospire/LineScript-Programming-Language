@@ -1,0 +1,17 @@
+main() -> i64 do
+  declare g = gfx_new(8, 8)
+  gfx_clear(g, 0, 0, 0)
+  gfx_set(g, 1, 1, 255, 0, 0)
+  gfx_line(g, 0, 0, 7, 7, 0, 255, 0)
+  gfx_rect(g, 2, 2, 4, 3, 0, 0, 255, true)
+
+  println(gfx_get(g, 0, 0))
+  println(gfx_get(g, 1, 1))
+  println(gfx_get(g, 3, 3))
+  println(gfx_get(g, 7, 7))
+  println(gfx_width(g))
+  println(gfx_height(g))
+
+  gfx_free(g)
+  return 0
+end

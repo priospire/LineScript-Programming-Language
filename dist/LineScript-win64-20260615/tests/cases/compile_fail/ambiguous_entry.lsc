@@ -1,0 +1,7 @@
+alpha() -> void do
+  return
+end
+
+beta() -> void do
+  return
+end

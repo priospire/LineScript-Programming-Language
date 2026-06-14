@@ -1,0 +1,5 @@
+class BadUnary do
+  fn operator unary -(x: i64) -> i64 do
+    return x
+  end
+end

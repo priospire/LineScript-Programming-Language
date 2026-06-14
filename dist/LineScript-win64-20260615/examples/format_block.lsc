@@ -1,0 +1,12 @@
+main() -> i64 do
+  formatOutput("\n") do
+    print("line=")
+    print(42)
+  end
+
+  formatOutput("!") {
+    print("done")
+  }
+  println("")
+  return 0
+end

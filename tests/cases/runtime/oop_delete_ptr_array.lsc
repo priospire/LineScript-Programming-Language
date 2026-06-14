@@ -1,0 +1,9 @@
+main() -> i64 do
+  declare arr: array<i64> = array_new()
+  array_push(arr, "a")
+  delete[] arr
+  declare p: ptr<i64> = mem_alloc(16)
+  delete p
+  println(1)
+  return 0
+end

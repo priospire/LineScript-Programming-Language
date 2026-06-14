@@ -1,0 +1,52 @@
+server_worker() -> void do
+  declare srv = http_server_listen(18182)
+  if srv < 0 do
+    return
+  end
+
+  for i in 0..160 do
+    declare client = http_server_accept(srv)
+    if client < 0 do
+      continue
+    end
+    declare req = http_server_read(client)
+    if contains(req, "GET /ping") do
+      http_server_respond_text(client, 200, "pong")
+    else do
+      http_server_respond_text(client, 400, "bad")
+    end
+    http_client_close(client)
+  end
+
+  http_server_close(srv)
+end
+
+main() -> i64 do
+  declare task = spawn(server_worker())
+  declare ok: i64 = 0
+
+  for i in 0..160 do
+    declare client: i64 = -1
+    for tries in 0..200000 do
+      client = http_client_connect("127.0.0.1", 18182)
+      if client >= 0 do
+        break
+      end
+    end
+
+    if client < 0 do
+      continue
+    end
+
+    http_client_send(client, "GET /ping HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+    declare res = http_client_read(client)
+    if contains(res, "200 OK") and contains(res, "pong") do
+      ok = ok + 1
+    end
+    http_client_close(client)
+  end
+
+  await(task)
+  println(ok)
+  return 0
+end

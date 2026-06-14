@@ -1,0 +1,7 @@
+main() -> i64 do
+  println(to_i64(3.9))
+  println(to_f64(7))
+  println(gcd(48, 18))
+  println(lcm(12, 18))
+  return 0
+end

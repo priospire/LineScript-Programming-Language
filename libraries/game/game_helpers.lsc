@@ -1,0 +1,27 @@
+fn ls_game_headless(width: i64, height: i64, title: str) -> i64 do
+  declare game = game_new(width, height, title, false)
+  game_set_target_fps(game, 0)
+  game_set_fixed_dt(game, 0.0166666666666667)
+  return game
+end
+
+fn ls_game_toggle_fullscreen(game: i64) -> bool do
+  if game_is_fullscreen(game) do
+    game_set_fullscreen(game, false)
+    return false
+  end
+  game_set_fullscreen(game, true)
+  return true
+end
+
+fn ls_game_clear_dark(game: i64) -> void do
+  game_clear(game, 18, 22, 30)
+end
+
+fn ls_game_center_x(game: i64) -> i64 do
+  return game_width(game) / 2
+end
+
+fn ls_game_center_y(game: i64) -> i64 do
+  return game_height(game) / 2
+end

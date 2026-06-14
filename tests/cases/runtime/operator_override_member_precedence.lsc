@@ -1,0 +1,24 @@
+class NumberBox do
+  declare value: i64 = 0
+
+  fn constructor(seed: i64) do
+    this.value = seed
+  end
+
+  fn operator +(rhs: i64) -> i64 do
+    // Avoid recursive '+' in the overload body.
+    return this.value - (-rhs) - (-1000)
+  end
+end
+
+operator +(a: i64, b: i64) -> i64 do
+  // Free override fallback for plain numerics.
+  return a - (-b) - (-100)
+end
+
+main() -> i64 do
+  declare box: NumberBox = NumberBox(7)
+  println(box + 3)
+  println(2 + 3)
+  return 0
+end

@@ -1,0 +1,10 @@
+main() -> i64 do
+  declare x: i64 = 1
+  declare y: i64 = 2
+  for i in 0..200000 do
+    x = x + y
+    y = y + ((i * 2) + 3)
+  end
+  println(x + y)
+  return 0
+end

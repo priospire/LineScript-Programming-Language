@@ -1,0 +1,48 @@
+declare total: i64 = 0
+
+for i in 0..5 do
+  total += i
+end
+
+while total < 12 do
+  total += 1
+end
+
+if total == 12 do
+  print("ok:")
+  println(total)
+end
+
+double_it(x: i64) -> i64 do
+  return x * 2
+end
+
+println(double_it(7))
+
+class Bag do
+  declare count: i64 = 0
+
+  add(v: i64) -> void do
+    this.count += v
+  end
+end
+
+declare b = Bag()
+b.add(3)
+println(b.count)
+
+declare arr = array_new()
+array_push(arr, "milk")
+array_push(arr, "tea")
+println(array_len(arr))
+println(array_get(arr, 0))
+array_free(arr)
+
+declare d = dict_new()
+dict_set(d, "name", "LineScript")
+println(dict_get(d, "name"))
+dict_free(d)
+
+formatOutput("!") do
+  print("human")
+end

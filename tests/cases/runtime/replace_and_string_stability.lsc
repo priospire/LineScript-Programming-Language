@@ -1,0 +1,10 @@
+main() -> i64 do
+  declare keep = replace("aaaa", "aa", "a")
+  for i in 0..20 do
+    declare temp = lower("XYZ")
+  end
+  println(keep)
+  println(replace("banana", "na", "x"))
+  println(substring("abcdef", 2, 9223372036854775807))
+  return 0
+end

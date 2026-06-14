@@ -1,0 +1,7 @@
+may_fail() -> i64 throws IOError do
+  return 1
+end
+
+main() -> i64 do
+  return may_fail()
+end

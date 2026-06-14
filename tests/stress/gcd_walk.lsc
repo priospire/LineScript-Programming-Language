@@ -1,0 +1,12 @@
+main() -> i64 do
+  declare a: i64 = 3918848
+  declare b: i64 = 1653264
+  declare sum: i64 = 0
+  for i in 1..300000 do
+    a = a + 17
+    b = b + 31
+    sum = sum + gcd(a, b)
+  end
+  println(sum)
+  return 0
+end

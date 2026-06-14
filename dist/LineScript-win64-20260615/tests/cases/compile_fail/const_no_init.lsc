@@ -1,0 +1,4 @@
+main() -> i64 do
+  declare const x: i64
+  return 0
+end

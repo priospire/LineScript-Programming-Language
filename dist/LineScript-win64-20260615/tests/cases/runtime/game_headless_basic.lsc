@@ -1,0 +1,36 @@
+main() -> i64 do
+  declare g = game_new(16, 16, "t", false)
+  println(g >= 0)
+  println(game_width(g))
+  println(game_height(g))
+
+  game_set_target_fps(g, 0)
+  game_set_fixed_dt(g, 0.01)
+  game_begin(g)
+  println(to_i64(round(game_delta(g) * 1000.0)))
+
+  game_clear(g, 0, 0, 0)
+  game_rect(g, 1, 1, 6, 4, 255, 0, 0, true)
+  game_line(g, 0, 0, 15, 15, 0, 255, 0)
+  game_set(g, 15, 0, 0, 0, 255)
+
+  declare s = gfx_new(2, 2)
+  gfx_clear(s, 0, 0, 0)
+  gfx_set(s, 0, 0, 255, 255, 255)
+  gfx_set(s, 1, 0, 255, 255, 255)
+  gfx_set(s, 0, 1, 255, 255, 255)
+  gfx_set(s, 1, 1, 255, 255, 255)
+  game_draw_gfx(g, s, 4, 4)
+  gfx_free(s)
+
+  println(game_get(g, 0, 0))
+  println(game_get(g, 15, 0))
+  println(game_get(g, 4, 4))
+  println(game_checksum(g))
+
+  game_end(g)
+  println(game_frame(g))
+  println(game_should_close(g))
+  game_free(g)
+  return 0
+end

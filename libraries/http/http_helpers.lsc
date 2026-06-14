@@ -1,0 +1,18 @@
+fn ls_http_listen_local(port: i64) -> i64 do
+  return http_server_listen(port)
+end
+
+fn ls_http_respond_ok(client: i64, body: str) -> void do
+  http_server_respond_text(client, 200, body)
+end
+
+fn ls_http_get_root_local(port: i64) -> str do
+  declare client = http_client_connect("127.0.0.1", port)
+  if client < 0 do
+    return ""
+  end
+  http_client_send(client, "GET / HTTP/1.1\nHost: 127.0.0.1\nConnection: close\n\n")
+  declare response = http_client_read(client)
+  http_client_close(client)
+  return response
+end

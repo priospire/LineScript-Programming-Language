@@ -1,0 +1,15 @@
+class Base do
+  public final fn ping(v: i64) -> i64 do
+    return v
+  end
+end
+
+class Derived extends Base do
+  public override fn ping(v: i64) -> i64 do
+    return v + 1
+  end
+end
+
+main() -> i64 do
+  return 0
+end

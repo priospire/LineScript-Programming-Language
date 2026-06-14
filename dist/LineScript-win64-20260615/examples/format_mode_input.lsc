@@ -1,0 +1,7 @@
+main() -> i64 do
+  .format()
+  declare raw = input("Value: ")
+  declare out = trim(raw)
+  println(replace(out, " ", "_"))
+  return 0
+end

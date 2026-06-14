@@ -1,0 +1,23 @@
+main() -> i64 do
+  declare game = ls_window_create_headless(96, 54, "engine-libs")
+  ls_window_begin_frame(game, 14, 18, 26)
+  ls_2d_draw_grid(game, 16, 28, 34, 46)
+  ls_ui_panel(game, 4, 4, 44, 18)
+  ls_ui_button(game, 52, 4, 32, 14, false)
+  ls_2d_draw_crosshair(game, ls_window_center_x(game), ls_window_center_y(game), 6, 255, 220, 80)
+  ls_3d_draw_segment(game, -1.0, -0.5, 4.0, 1.0, 0.5, 4.0, 40.0, 120, 220, 255)
+
+  declare body = ls_phys_body(0.0, 2.0, 0.0, 1.0)
+  ls_phys_bind_camera_follow(body, 0.0, 1.8, -6.0)
+  phys_apply_force(body, 0.0, 12.0, 0.0)
+  ls_phys_step_60()
+  println(game_width(game))
+  println(game_height(game))
+  println(camera_target() == body)
+  println(to_i64(round(phys_get_y(body))))
+  println(game_checksum(game) > 0)
+  phys_free(body)
+  ls_window_end_frame(game)
+  game_free(game)
+  return 0
+end

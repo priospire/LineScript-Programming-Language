@@ -1,0 +1,5 @@
+main() -> i64 do
+  declare x = len(123)
+  println(x)
+  return 0
+end

@@ -1,0 +1,35 @@
+fn ls_math_square_i64(x: i64) -> i64 do
+  return x * x
+end
+
+fn ls_math_cube_i64(x: i64) -> i64 do
+  return x * x * x
+end
+
+fn ls_math_sign_i64(x: i64) -> i64 do
+  if x > 0 do
+    return 1
+  elif x < 0 do
+    return -1
+  end
+  return 0
+end
+
+fn ls_math_is_even(x: i64) -> bool do
+  return x % 2 == 0
+end
+
+fn ls_math_wrap_i64(x: i64, modv: i64) -> i64 do
+  if modv <= 0 do
+    return 0
+  end
+  declare r = x % modv
+  if r < 0 do
+    return r + modv
+  end
+  return r
+end
+
+fn ls_math_lerp_f64(a: f64, b: f64, t: f64) -> f64 do
+  return a + ((b - a) * t)
+end

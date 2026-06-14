@@ -1,0 +1,24 @@
+main() -> i64 do
+  declare g = gfx_new(256, 256)
+  gfx_clear(g, 0, 0, 0)
+
+  for y in 0..256 do
+    for x in 0..256 do
+      declare r = (x * 5 + y * 3) % 256
+      declare gg = (x * 7 + y * 11) % 256
+      declare b = (x * 13 + y * 17) % 256
+      gfx_set(g, x, y, r, gg, b)
+    end
+  end
+
+  declare sum: i64 = 0
+  for y in 0..256 do
+    for x in 0..256 do
+      sum = sum + gfx_get(g, x, y)
+    end
+  end
+
+  println(sum)
+  gfx_free(g)
+  return 0
+end

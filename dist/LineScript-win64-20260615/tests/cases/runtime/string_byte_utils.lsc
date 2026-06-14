@@ -1,0 +1,18 @@
+main() -> i64 do
+  declare s: str = "  AbC  "
+  println(trim(s))
+  println(lower("HeLLo"))
+  println(upper("Hi"))
+  println(replace("line-script", "-", "_"))
+  println(substring("abcdef", 2, 3))
+  println(repeat("ha", 3))
+  println(reverse("abc"))
+  println(includes("LineScript", "Script"))
+  println(byte_at("AZ", 1))
+  println(ord("Z"))
+  println(chr(65))
+  println(bytes_len("abc"))
+  println(parse_i64("1234"))
+  println(parse_f64("2.5"))
+  return 0
+end

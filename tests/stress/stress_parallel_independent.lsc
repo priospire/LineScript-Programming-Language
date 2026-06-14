@@ -1,0 +1,15 @@
+main() -> i64 do
+  parallel for i in 0..4000000 do
+    declare x = i * 7 - 3
+    if x == -1 do
+      println(x)
+    end
+  end
+
+  declare sum: i64 = 0
+  for i in 0..4000000 do
+    sum = sum + (i * 7 - 3)
+  end
+  println(sum)
+  return 0
+end

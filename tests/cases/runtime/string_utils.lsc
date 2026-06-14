@@ -1,0 +1,11 @@
+main() -> i64 do
+  declare s: str = "LineScript"
+  println(len(s))
+  println(is_empty(""))
+  println(contains(s, "Script"))
+  println(starts_with(s, "Line"))
+  println(ends_with(s, "Script"))
+  println(find(s, "Script"))
+  println(find(s, "missing"))
+  return 0
+end

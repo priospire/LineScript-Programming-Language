@@ -1,0 +1,44 @@
+// LineScript math showcase:
+// - declare syntax
+// - power operators (** and ^)
+// - trig + sqrt built-ins
+// - modulo and comparisons
+
+circle_area(radius: f64) -> f64 do
+  return pi() * (radius ** 2.0)
+end
+
+mix_math(x: f64, angle_deg: f64) -> f64 do
+  declare rad = deg_to_rad(angle_deg)
+  declare trig = sin(rad) + cos(rad) + tan(rad / 4.0)
+  declare base = sqrt(x) + pow(x, 0.5)
+  declare p = x ^ 3.0
+  declare peak = max_f64(base, trig)
+  declare bounded = clamp_f64(p, 0.0, 5000.0)
+  return peak + bounded + tau()
+end
+
+classify(n: i64) -> i64 do
+  unless n > 0 do
+    return 0
+  end
+  if n % 2 == 0 do
+    return 2
+  else do
+    return 1
+  end
+end
+
+main() -> i64 do
+  declare const r: f64 = 5.0
+  declare area = circle_area(r)
+  declare mixed = mix_math(9.0, 45.0)
+  declare back_to_deg = rad_to_deg(deg_to_rad(90.0))
+  declare kind = classify(11)
+
+  println(area)
+  println(mixed)
+  println(back_to_deg)
+  println(kind)
+  return 0
+end

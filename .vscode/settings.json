@@ -1,0 +1,43 @@
+{
+  "files.associations": {
+    "*.lsc": "linescript",
+    "*.ls": "linescript"
+  },
+  "[linescript]": {
+    "editor.defaultFormatter": "linescript.linescript-vscode",
+    "editor.formatOnSave": true
+  },
+  "workbench.iconTheme": "linescript-seti-icons",
+  "linescript.lscPath": "",
+  "linescript.compilerDiagnosticsOnly": false,
+  "linescript.checkOnType": true,
+  "linescript.checkOnSave": true,
+  "linescript.checkTimeoutMs": 12000,
+  "linescript.hintsEnabled": true,
+  "linescript.styleHintsEnabled": true,
+  "editor.tokenColorCustomizations": {
+    "textMateRules": [
+      {
+        "scope": "support.function.superuser.linescript",
+        "settings": {
+          "foreground": "#00D8FF",
+          "fontStyle": ""
+        }
+      },
+      {
+        "scope": "keyword.control.modifier.linescript",
+        "settings": {
+          "foreground": "#FFB347",
+          "fontStyle": "bold"
+        }
+      },
+      {
+        "scope": "entity.name.function.main.linescript",
+        "settings": {
+          "foreground": "#FF3B30",
+          "fontStyle": ""
+        }
+      }
+    ]
+  }
+}

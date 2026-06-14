@@ -1,0 +1,19 @@
+main() -> i64 do
+  declare arr = array_new()
+  array_push(arr, "a")
+  array_push(arr, "b")
+  array_push(arr, "c")
+  println(array_join(arr, ","))
+  println(array_includes(arr, "b"))
+  println(array_pop(arr))
+  println(array_len(arr))
+
+  declare m = map_new()
+  map_set(m, "x", "10")
+  map_set(m, "y", "20")
+  println(map_get(m, "x"))
+  println(map_has(m, "z"))
+  map_remove(m, "y")
+  println(map_len(m))
+  return 0
+end

@@ -1,0 +1,7 @@
+.format()
+
+flag hello-world() do
+  println("flag-hyphen")
+end
+
+println("script-ok")

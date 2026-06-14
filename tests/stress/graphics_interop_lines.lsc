@@ -1,0 +1,26 @@
+main() -> i64 do
+  declare g = gfx_new(512, 512)
+  gfx_clear(g, 1, 2, 3)
+
+  for i in 0..20000 do
+    declare x0 = (i * 37) % 512
+    declare y0 = (i * 53) % 512
+    declare x1 = (x0 + 31) % 512
+    declare y1 = (y0 + 47) % 512
+    declare r = (i * 3) % 256
+    declare gg = (i * 5) % 256
+    declare b = (i * 7) % 256
+    gfx_line(g, x0, y0, x1, y1, r, gg, b)
+  end
+
+  declare d = dict_new()
+  dict_set(d, "w", formatOutput(gfx_width(g)))
+  dict_set(d, "h", formatOutput(gfx_height(g)))
+
+  declare sum: i64 = parse_i64(dict_get(d, "w")) + parse_i64(dict_get(d, "h"))
+  sum = sum + gfx_get(g, 0, 0) + gfx_get(g, 100, 100) + gfx_get(g, 511, 511)
+
+  println(sum)
+  gfx_free(g)
+  return 0
+end

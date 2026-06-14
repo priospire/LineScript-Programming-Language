@@ -1,0 +1,27 @@
+main() -> i64 do
+  declare sum: i64 = 0
+
+  for i in 0..4096 do
+    declare id = phys_new(to_f64(i), 0.0, 0.0, 1.0, (i % 2) == 0)
+    sum = sum + id
+  end
+
+  sum = sum + phys_new(0.0, 0.0, 0.0, 1.0, false)
+
+  camera_bind(-1)
+  sum = sum + camera_target()
+
+  for i in 0..4096 step 2 do
+    phys_free(i)
+  end
+
+  sum = sum + camera_target()
+
+  for t in 0..200 do
+    phys_step(0.01)
+  end
+
+  sum = sum + to_i64(round(phys_get_x(1)))
+  println(sum)
+  return 0
+end

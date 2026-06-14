@@ -1,0 +1,4 @@
+main() -> i64 do
+  array_push("oops", "x")
+  return 0
+end

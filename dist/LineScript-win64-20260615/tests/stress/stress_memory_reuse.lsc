@@ -1,0 +1,78 @@
+main() -> i64 do
+  declare failures: i64 = 0
+  declare checksum: i64 = 0
+
+  for i in 0..12000 do
+    declare a = array_new()
+    if a < 0 do
+      failures = failures + 1
+    else do
+      array_push(a, "x")
+      checksum = checksum + array_len(a)
+      array_free(a)
+    end
+
+    declare d = dict_new()
+    if d < 0 do
+      failures = failures + 1
+    else do
+      dict_set(d, "k", "v")
+      if dict_has(d, "k") do
+        checksum = checksum + 3
+      end
+      dict_free(d)
+    end
+
+    declare n = np_new(32)
+    if n < 0 do
+      failures = failures + 1
+    else do
+      np_fill(n, 2.0)
+      checksum = checksum + to_i64(np_sum(n))
+      np_free(n)
+    end
+
+    declare o = option_some("ok")
+    if o < 0 do
+      failures = failures + 1
+    else do
+      if option_is_some(o) do
+        checksum = checksum + 5
+      end
+      option_free(o)
+    end
+
+    declare r = result_ok("ok")
+    if r < 0 do
+      failures = failures + 1
+    else do
+      if result_is_ok(r) do
+        checksum = checksum + 7
+      end
+      result_free(r)
+    end
+
+    declare g = gfx_new(8, 8)
+    if g < 0 do
+      failures = failures + 1
+    else do
+      gfx_clear(g, 1, 2, 3)
+      checksum = checksum + gfx_width(g)
+      gfx_free(g)
+    end
+
+    declare p = phys_new(0.0, 1.0, 0.0, 1.0, false)
+    if p < 0 do
+      failures = failures + 1
+    else do
+      phys_apply_force(p, 1.0, 0.0, 0.0)
+      phys_step(0.016)
+      checksum = checksum + to_i64(phys_get_x(p) * 1000.0)
+      phys_free(p)
+    end
+  end
+
+  println(failures)
+  println(checksum)
+  return 0
+end

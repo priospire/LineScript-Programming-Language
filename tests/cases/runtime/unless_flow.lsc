@@ -1,0 +1,17 @@
+classify(x: i64) -> i64 do
+  unless x > 10 do
+    return 1
+  end
+  if x % 2 == 0 do
+    return 2
+  else do
+    return 3
+  end
+end
+
+main() -> i64 do
+  println(classify(5))
+  println(classify(12))
+  println(classify(13))
+  return 0
+end

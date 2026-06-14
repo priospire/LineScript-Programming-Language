@@ -1,0 +1,2 @@
+declare caps = su.capabilities()
+println(caps)

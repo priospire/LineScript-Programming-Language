@@ -1,0 +1,6 @@
+main() -> i64 do
+  if not 1 do
+    println(0)
+  end
+  return 0
+end

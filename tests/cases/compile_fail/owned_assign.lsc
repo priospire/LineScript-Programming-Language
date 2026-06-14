@@ -1,0 +1,5 @@
+main() -> i64 do
+  declare owned arr = array_new()
+  arr = array_new()
+  return 0
+end

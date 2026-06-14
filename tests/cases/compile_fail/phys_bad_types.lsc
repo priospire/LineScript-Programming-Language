@@ -1,0 +1,4 @@
+main() -> i64 do
+  declare x = phys_new("0", 0.0, 0.0, 1.0, false)
+  return 0
+end

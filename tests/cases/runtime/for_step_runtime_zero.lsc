@@ -1,0 +1,9 @@
+main() -> i64 do
+  declare step_value: i64 = 0
+  declare count: i64 = 0
+  for i in 0..10 step step_value do
+    count = count + 1
+  end
+  println(count)
+  return 0
+end

@@ -1,0 +1,4 @@
+main() -> i64 do
+  declare g = gfx_new("4", 4)
+  return 0
+end

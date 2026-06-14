@@ -1,0 +1,13 @@
+operator unary -(x: i64) -> i64 do
+  return x + 100
+end
+
+operator unary !(x: bool) -> bool do
+  return x
+end
+
+main() -> i64 do
+  println(-5)
+  println(!true)
+  return 0
+end

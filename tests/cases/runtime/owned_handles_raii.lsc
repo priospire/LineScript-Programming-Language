@@ -1,0 +1,12 @@
+main() -> i64 do
+  declare h: i64 = 0
+  declare gate = clock_us() >= 0
+  if gate do
+    declare owned arr = array_new()
+    array_push(arr, "x")
+    h = arr
+    println(array_len(arr))
+  end
+  println(array_len(h))
+  return 0
+end

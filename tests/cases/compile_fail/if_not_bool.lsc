@@ -1,0 +1,6 @@
+main() -> i64 do
+  if 1 do
+    return 1
+  end
+  return 0
+end

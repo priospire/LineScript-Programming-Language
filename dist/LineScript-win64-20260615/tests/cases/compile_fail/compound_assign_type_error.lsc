@@ -1,0 +1,5 @@
+main() -> i64 do
+  declare x: f64 = 1.5
+  x %= 2.0
+  return 0
+end

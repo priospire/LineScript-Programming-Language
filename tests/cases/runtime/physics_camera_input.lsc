@@ -1,0 +1,28 @@
+main() -> i64 do
+  declare first = phys_new(10.0, 5.0, -2.0, 1.0, false)
+  declare soft = phys_new(1.0, 2.0, 3.0, 0.0, true)
+
+  println(camera_target())
+  println(phys_is_soft(soft))
+
+  camera_bind(soft)
+  println(camera_target())
+  camera_set_offset(1.0, 2.0, 3.0)
+  println(to_i64(round(camera_get_x())))
+  println(to_i64(round(camera_get_y())))
+  println(to_i64(round(camera_get_z())))
+
+  phys_set_velocity(soft, 2.0, 0.0, 0.0)
+  phys_step(0.5)
+  println(to_i64(round(phys_get_x(soft) * 1000.0)))
+
+  phys_free(soft)
+  println(camera_target())
+  println(to_i64(round(phys_get_x(first))))
+
+  println(key_down(-1))
+  println(key_down_name("NO_SUCH_KEY"))
+
+  phys_free(first)
+  return 0
+end

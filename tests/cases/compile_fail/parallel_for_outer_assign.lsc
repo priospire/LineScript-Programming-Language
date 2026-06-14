@@ -1,0 +1,8 @@
+main() -> i64 do
+  declare total: i64 = 0
+  parallel for i in 0..10 do
+    total = total + i
+  end
+  println(total)
+  return 0
+end

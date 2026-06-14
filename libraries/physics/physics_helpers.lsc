@@ -1,0 +1,26 @@
+fn ls_phys_body(x: f64, y: f64, z: f64, mass: f64) -> i64 do
+  return phys_new(x, y, z, mass, false)
+end
+
+fn ls_phys_soft_body(x: f64, y: f64, z: f64, mass: f64) -> i64 do
+  return phys_new(x, y, z, mass, true)
+end
+
+fn ls_phys_step_60() -> void do
+  phys_step(0.0166666666666667)
+end
+
+fn ls_phys_apply_gravity_scale(obj: i64, scale: f64) -> void do
+  phys_apply_force(obj, 0.0, -9.81 * scale, 0.0)
+end
+
+fn ls_phys_bind_camera_follow(obj: i64, off_x: f64, off_y: f64, off_z: f64) -> void do
+  camera_bind(obj)
+  camera_set_offset(off_x, off_y, off_z)
+end
+
+fn ls_phys_speed_xz(obj: i64) -> f64 do
+  declare vx = phys_get_vx(obj)
+  declare vz = phys_get_vz(obj)
+  return sqrt((vx * vx) + (vz * vz))
+end

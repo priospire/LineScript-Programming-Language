@@ -1,0 +1,35 @@
+fn ls_ui_mouse_in(game: i64, x: i64, y: i64, w: i64, h: i64) -> bool do
+  declare mx = game_mouse_x(game)
+  declare my = game_mouse_y(game)
+  declare x0 = to_f64(x)
+  declare y0 = to_f64(y)
+  declare x1 = to_f64(x + w)
+  declare y1 = to_f64(y + h)
+  return mx >= x0 and mx < x1 and my >= y0 and my < y1
+end
+
+fn ls_ui_panel(game: i64, x: i64, y: i64, w: i64, h: i64) -> void do
+  game_rect(game, x, y, w, h, 34, 40, 52, true)
+  game_rect(game, x, y, w, h, 92, 110, 140, false)
+end
+
+fn ls_ui_button(game: i64, x: i64, y: i64, w: i64, h: i64, hot: bool) -> void do
+  if hot do
+    game_rect(game, x, y, w, h, 86, 145, 255, true)
+    game_rect(game, x, y, w, h, 190, 220, 255, false)
+  else do
+    game_rect(game, x, y, w, h, 52, 66, 92, true)
+    game_rect(game, x, y, w, h, 120, 140, 170, false)
+  end
+end
+
+fn ls_ui_progress(game: i64, x: i64, y: i64, w: i64, h: i64, current: i64, maxv: i64) -> void do
+  game_rect(game, x, y, w, h, 20, 24, 32, true)
+  if maxv <= 0 do
+    game_rect(game, x, y, w, h, 100, 120, 150, false)
+    return
+  end
+  declare fill = (w * clamp(current, 0, maxv)) / maxv
+  game_rect(game, x, y, fill, h, 80, 220, 140, true)
+  game_rect(game, x, y, w, h, 100, 120, 150, false)
+end

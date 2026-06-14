@@ -1,0 +1,12 @@
+main() -> i64 do
+  declare const x: i64 = 42
+  declare const y: f64 = 1.5
+  declare const z: bool = true
+
+  print(x)
+  print(100)
+  println(x)
+  println(y)
+  println(z)
+  return 0
+end

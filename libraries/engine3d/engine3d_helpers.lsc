@@ -1,0 +1,30 @@
+fn ls_3d_depth_safe(z: f64) -> f64 do
+  if z < 0.1 do
+    return 0.1
+  end
+  return z
+end
+
+fn ls_3d_project_x(x: f64, z: f64, screen_w: i64, focal: f64) -> i64 do
+  declare depth = ls_3d_depth_safe(z)
+  return (screen_w / 2) + to_i64(round((x * focal) / depth))
+end
+
+fn ls_3d_project_y(y: f64, z: f64, screen_h: i64, focal: f64) -> i64 do
+  declare depth = ls_3d_depth_safe(z)
+  return (screen_h / 2) - to_i64(round((y * focal) / depth))
+end
+
+fn ls_3d_draw_point(game: i64, x: f64, y: f64, z: f64, focal: f64, size: i64, r: i64, g: i64, b: i64) -> void do
+  declare px = ls_3d_project_x(x, z, game_width(game), focal)
+  declare py = ls_3d_project_y(y, z, game_height(game), focal)
+  game_rect(game, px - (size / 2), py - (size / 2), size, size, r, g, b, true)
+end
+
+fn ls_3d_draw_segment(game: i64, ax: f64, ay: f64, az: f64, bx: f64, by: f64, bz: f64, focal: f64, r: i64, g: i64, b: i64) -> void do
+  declare x0 = ls_3d_project_x(ax, az, game_width(game), focal)
+  declare y0 = ls_3d_project_y(ay, az, game_height(game), focal)
+  declare x1 = ls_3d_project_x(bx, bz, game_width(game), focal)
+  declare y1 = ls_3d_project_y(by, bz, game_height(game), focal)
+  game_line(game, x0, y0, x1, y1, r, g, b)
+end

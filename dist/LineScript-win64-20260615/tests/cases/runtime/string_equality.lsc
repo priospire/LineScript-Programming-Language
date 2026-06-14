@@ -1,0 +1,8 @@
+main() -> i64 do
+  declare a: str = "LineScript"
+  declare b: str = "LineScript"
+  declare c: str = "lineScript"
+  println(a == b)
+  println(a != c)
+  return 0
+end

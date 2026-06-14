@@ -1,0 +1,12 @@
+declare print = 42
+declare println = 100
+declare max = 5
+declare input_i64 = 7
+
+println("ok")
+println(print)
+println(sqrt(16.0))
+println(println)
+println(max(3, 9))
+println(input_i64)
+println(max)

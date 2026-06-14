@@ -1,0 +1,4 @@
+main() -> i64 do
+  declare x = 10 / 0
+  return x
+end

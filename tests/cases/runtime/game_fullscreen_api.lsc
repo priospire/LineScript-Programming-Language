@@ -1,0 +1,13 @@
+main() -> i64 do
+  declare g = game_new(32, 32, "fs", false)
+  println(game_is_fullscreen(g))
+  game_set_fullscreen(g, true)
+  println(game_is_fullscreen(g))
+  game_set_fullscreen(g, false)
+  println(game_is_fullscreen(g))
+  println(pg_is_fullscreen(g))
+  pg_set_fullscreen(g, true)
+  println(pg_is_fullscreen(g))
+  game_free(g)
+  return 0
+end

@@ -1,0 +1,28 @@
+main() -> i64 do
+  declare a = sqrt(81)
+  declare b = sin(pi() / 2.0)
+  declare c = clamp_i64(20, 0, 10)
+  declare d = rad_to_deg(deg_to_rad(90.0))
+
+  if a == 9.0 do
+    println(1)
+  else do
+    println(0)
+  end
+
+  if (b > 0.99) and (b < 1.01) do
+    println(1)
+  else do
+    println(0)
+  end
+
+  println(c)
+
+  if (d > 89.99) and (d < 90.01) do
+    println(1)
+  else do
+    println(0)
+  end
+
+  return 0
+end

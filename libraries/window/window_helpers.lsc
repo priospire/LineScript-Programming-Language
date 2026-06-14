@@ -1,0 +1,38 @@
+fn ls_window_create(width: i64, height: i64, title: str, fps: i64) -> i64 do
+  declare game = game_new(width, height, title, true)
+  game_set_target_fps(game, fps)
+  return game
+end
+
+fn ls_window_create_headless(width: i64, height: i64, title: str) -> i64 do
+  declare game = game_new(width, height, title, false)
+  game_set_target_fps(game, 0)
+  game_set_fixed_dt(game, 0.0166666666666667)
+  return game
+end
+
+fn ls_window_begin_frame(game: i64, r: i64, g: i64, b: i64) -> void do
+  game_begin(game)
+  game_clear(game, r, g, b)
+end
+
+fn ls_window_end_frame(game: i64) -> void do
+  game_end(game)
+end
+
+fn ls_window_toggle_fullscreen(game: i64) -> bool do
+  if game_is_fullscreen(game) do
+    game_set_fullscreen(game, false)
+    return false
+  end
+  game_set_fullscreen(game, true)
+  return true
+end
+
+fn ls_window_center_x(game: i64) -> i64 do
+  return game_width(game) / 2
+end
+
+fn ls_window_center_y(game: i64) -> i64 do
+  return game_height(game) / 2
+end

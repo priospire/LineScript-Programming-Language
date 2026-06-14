@@ -1,0 +1,4 @@
+main() -> i64 do
+  declare x = 5.5 % 2
+  return 0
+end

@@ -1,0 +1,4 @@
+main() -> i64 do
+  declare g = game_new("128", 128, "bad", false)
+  return 0
+end

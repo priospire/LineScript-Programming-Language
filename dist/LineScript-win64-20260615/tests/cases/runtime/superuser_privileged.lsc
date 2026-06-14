@@ -1,0 +1,20 @@
+superuser()
+su.trace.off()
+
+declare caps = su.capabilities()
+println(contains(caps, "superuser=on"))
+
+su.limit.set(10000, 4096)
+declare mem = su.memory.inspect()
+println(contains(mem, "mem_limit=4096"))
+
+declare inspect = su.compiler.inspect()
+println(contains(inspect, "backend="))
+
+su.debug.hook("probe")
+
+declare x: i64 = 0
+for i in 0..10 step 0 do
+  x = x + 1
+end
+println(x)
