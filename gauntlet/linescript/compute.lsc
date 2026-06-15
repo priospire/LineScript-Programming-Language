@@ -1,0 +1,146 @@
+main() -> i64 do
+  declare seed: i64 = input_i64()
+  declare mode: i64 = input_i64()
+  declare n: i64 = input_i64()
+  declare p1: i64 = input_i64()
+  declare p2: i64 = input_i64()
+  declare p3: i64 = input_i64()
+  declare p4: i64 = input_i64()
+
+  if n < 1 do
+    n = 1
+  end
+
+  declare checksum: i64 = 0
+  declare t0 = clock_us()
+
+  if mode == 0 do
+    declare subtype = p1
+    declare modv = p4
+    if modv < 2 do
+      modv = 2
+    end
+
+    if subtype == 0 do
+      for i in 0..n do
+        checksum = checksum + ((i * p2 + p3 + seed) % modv)
+      end
+    elif subtype == 1 do
+      for i in 0..n do
+        if (i + seed) % 2 == 0 do
+          checksum = checksum + ((i * p2 + 7 + seed) % modv)
+        elif (i + seed) % 3 == 0 do
+          checksum = checksum + ((i * p3 + 11 + seed) % modv)
+        else do
+          checksum = checksum + ((i * (p2 + p3 + 1) + 13 + seed) % modv)
+        end
+      end
+    else do
+      declare a: i64 = 3
+      declare b: i64 = 5
+      declare c: i64 = 7
+      for i in 0..n do
+        declare nxt = (a * 13 + b * 17 + c * 19 + i + seed + p2) % modv
+        a = b
+        b = c
+        c = nxt
+        checksum = checksum + nxt
+      end
+    end
+
+  elif mode == 1 do
+    declare subtype = p1
+    declare modv = p4
+    if modv < 2 do
+      modv = 2
+    end
+    declare buf = np_new(n)
+    if buf < 0 do
+      println(-1)
+      println(0)
+      return 0
+    end
+
+    if subtype == 0 do
+      for i in 0..n do
+        np_set(buf, i, to_f64((i * p2 + p3 + seed) % modv))
+      end
+      for i in 0..n do
+        checksum = checksum + to_i64(np_get(buf, i))
+      end
+    else do
+      declare stride = p2
+      if stride < 1 do
+        stride = 1
+      end
+      declare passes = p3
+      if passes < 1 do
+        passes = 1
+      end
+      for i in 0..n do
+        np_set(buf, i, to_f64((i + seed) % modv))
+      end
+      for p in 0..passes do
+        for i in 0..n step stride do
+          declare cur = to_i64(np_get(buf, i))
+          declare nxt = (cur * (p4 + 3) + p + seed) % modv
+          np_set(buf, i, to_f64(nxt))
+          checksum = checksum + nxt
+        end
+      end
+    end
+    np_free(buf)
+
+  else do
+    declare subtype = p1
+    declare modv = p4
+    if modv < 2 do
+      modv = 2
+    end
+    if subtype == 0 do
+      for i in 0..n do
+        checksum = checksum + ((i * 7 + seed) % modv)
+        checksum = checksum + ((i * 11 + p2) % modv)
+      end
+    elif subtype == 1 do
+      declare outer = p2
+      if outer < 1 do
+        outer = 1
+      end
+      declare inner = p3
+      if inner < 1 do
+        inner = 1
+      end
+      for i in 0..outer do
+        declare base = (i * 13 + seed) % modv
+        for j in 0..inner do
+          checksum = checksum + ((base + j * 17) % modv)
+        end
+      end
+    else do
+      declare buf = np_new(n)
+      if buf < 0 do
+        println(-1)
+        println(0)
+        return 0
+      end
+      for i in 0..n do
+        np_set(buf, i, to_f64((i + seed) % modv))
+      end
+      for p in 0..8 do
+        for i in 0..n step 3 do
+          declare cur = to_i64(np_get(buf, i))
+          declare nxt = (cur * 19 + p + seed) % modv
+          np_set(buf, i, to_f64(nxt))
+          checksum = checksum + nxt
+        end
+      end
+      np_free(buf)
+    end
+  end
+
+  declare t1 = clock_us()
+  println(checksum)
+  println(t1 - t0)
+  return 0
+end

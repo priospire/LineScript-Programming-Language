@@ -1,5 +1,72 @@
 # LineScript Changelog
 
+## 2026-06-15 (LineScript 1.5.1, Velocity Update)
+
+### Added
+- multicore task controls:
+- `task_hardware_threads`
+- `task_set_worker_count`
+- `task_worker_count`
+- `task_set_hyperthreading`
+- `task_hyperthreading_enabled`
+- renderer hardware-acceleration preference APIs:
+- `renderer_set_hardware_acceleration`
+- `renderer_hardware_acceleration_enabled`
+- `renderer_select_accelerated`
+- explicit game window mode APIs:
+- `game_set_window_mode`
+- `game_window_mode`
+- `game_set_windowed`
+- `game_set_windowed_fullscreen`
+- `game_set_fullscreen_mode`
+- frame interpolation APIs:
+- `game_set_interpolation`
+- `game_interpolation_enabled`
+- `game_set_interpolation_alpha`
+- `game_interpolation_alpha`
+- `game_interpolated_delta`
+- pygame-style aliases for the new window/interpolation APIs.
+- deterministic runtime coverage: `tests/cases/runtime/multicore_window_rendering.lsc`.
+- compile-fail coverage: `tests/cases/compile_fail/multicore_window_bad_types.lsc`.
+- project handoff context: `docs/PROJECT_CONTEXT.md`.
+
+### Changed
+- renderer backend selection now tracks accelerated backend preferences while keeping deterministic software rendering as the built-in path.
+- headless game handles now preserve requested window mode for deterministic tests without opening native windows.
+- editor completion, syntax highlighting, and arity hints now recognize the new task/render/window/interpolation APIs.
+- README, syntax guide, language guide, stdlib reference, and API reference now document the new APIs.
+
+### Tooling
+- installed `rtk 0.42.4` locally and initialized Codex integration with `rtk init -g --codex`.
+
+## 2026-06-15 (Game/UI Rendering Pass)
+
+### Added
+- bitmap handles over the existing fast graphics surface runtime:
+- `bitmap_new`, `bitmap_load`, `bitmap_free`, `bitmap_width`, `bitmap_height`, `bitmap_get`, `bitmap_set`, `bitmap_save_ppm`.
+- bitmap loading for `P3`/`P6` PPM and uncompressed 24/32-bit BMP files.
+- bitmap blitting:
+- `gfx_draw_bitmap`
+- `game_draw_bitmap`
+- `pg_draw_bitmap`
+- `pg_surface_draw_bitmap`
+- built-in 5x7 raster text drawing:
+- `gfx_text`, `gfx_text_width`
+- `game_text`, `game_text_width`
+- `pg_draw_text`, `pg_surface_text`
+- renderer backend compatibility APIs:
+- `renderer_set_backend`
+- `renderer_backend`
+- `renderer_supports`
+- `renderer_is_accelerated`
+- new example: `examples/ui_bitmap_text_demo.lsc`.
+- deterministic runtime coverage: `tests/cases/runtime/bitmap_text_renderer.lsc`.
+
+### Changed
+- UI, 2D graphics, and game helper libraries now include text/image/backend helper wrappers.
+- editor builtin catalog, completion list, and syntax highlighting now recognize bitmap/rendering APIs.
+- documentation now explains bitmap loading, text drawing, renderer backend selection, and OpenGL/Vulkan compatibility status.
+
 ## 2026-06-15 (LineScript 1.5.0, Velocity update)
 
 ### Changed

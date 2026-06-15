@@ -3,7 +3,7 @@
 LineScript is a speed-first compiled language with high-level syntax.
 
 Current release:
-- LineScript 1.5.0, "Velocity" update
+- LineScript 1.5.1, "Velocity Update"
 
 Official GitHub repository:
 - https://github.com/priospire/LineScript-Programming-Language
@@ -437,13 +437,21 @@ end
 Native graphics (built-in 2D raster, no external package):
 
 ```linescript
+renderer_set_backend("software")
 declare canvas = gfx_new(320, 200)
+declare bitmap = bitmap_new(24, 16)
 gfx_clear(canvas, 20, 20, 30)
+bitmap_set(bitmap, 0, 0, 255, 170, 40)
+gfx_draw_bitmap(canvas, bitmap, 20, 20)
+gfx_text(canvas, 20, 44, "LineScript", 240, 245, 255)
 gfx_line(canvas, 0, 0, 319, 199, 255, 0, 0)
 gfx_rect(canvas, 20, 20, 80, 50, 0, 200, 255, false)
 println(gfx_save_ppm(canvas, "frame.ppm"))
+bitmap_free(bitmap)
 gfx_free(canvas)
 ```
+
+Bitmap loading supports PPM (`P3`/`P6`) and uncompressed BMP (`24/32-bit`). Renderer backend names currently accepted are `software`, `opengl`, and `vulkan`; OpenGL/Vulkan are compatibility targets until a native accelerated backend is linked.
 
 Pygame-like aliases:
 
@@ -498,6 +506,7 @@ while not game_should_close(game) do
   game_rect(game, mx - 4, my - 4, 8, 8, 120, 255, 120, true)
   game_rect(game, 30, 30, 80, 50, 255, 170, 60, true)
   game_line(game, 0, 0, 319, 179, 90, 220, 255)
+  game_text(game, 12, 12, "HUD", 240, 245, 255)
   game_end(game)
 end
 
@@ -660,6 +669,8 @@ Options:
 - on Windows, eligible `-O4` programs use an ultra-minimal no-CRT backend path for lower launch overhead
 - loop vectorization/unroll hints in emitted C
 - `parallel for` maps to OpenMP parallel+SIMD when available (serial fallback otherwise)
+- `task_hardware_threads`, `task_worker_count`, and `task_set_worker_count` expose multicore worker controls
+- `task_set_hyperthreading(false)` applies to Intel Hyper-Threading and AMD Simultaneous Multithreading policy
 - low-overhead C emission
 - static typing with predictable codegen
 
@@ -683,11 +694,13 @@ Built-in helpers include:
 - manual memory (no GC): `mem_alloc`, `mem_realloc`, `mem_free`, `mem_set`, `mem_copy`, `mem_read_i64`, `mem_write_i64`, `mem_read_f64`, `mem_write_f64`
 - collections: `array_new`, `array_len`, `array_free`, `array_push`, `array_get`, `array_set`, `array_pop`, `array_join`, `array_includes`
 - maps/dicts: `dict_new`, `dict_len`, `dict_free`, `dict_set`, `dict_get`, `dict_has`, `dict_remove`, plus `map_*`/`object_*` aliases including `map_free` and `object_free`
-- graphics: `gfx_new`, `gfx_free`, `gfx_width`, `gfx_height`, `gfx_clear`, `gfx_set`, `gfx_get`, `gfx_line`, `gfx_rect`, `gfx_save_ppm`
-- game runtime: `game_new`, `game_free`, `game_width`, `game_height`, `game_set_target_fps`, `game_set_fixed_dt`, `game_should_close`, `game_begin`, `game_poll`, `game_present`, `game_end`, `game_delta`, `game_frame`, `game_clear`, `game_set`, `game_get`, `game_line`, `game_rect`, `game_draw_gfx`, `game_save_ppm`, `game_checksum`
-- pygame-like aliases: `pg_init`, `pg_quit`, `pg_should_quit`, `pg_begin`, `pg_end`, `pg_set_target_fps`, `pg_set_fixed_dt`, `pg_clear`, `pg_draw_pixel`, `pg_draw_line`, `pg_draw_rect`, `pg_blit`, `pg_get_pixel`, `pg_save_ppm`, `pg_checksum`, `pg_mouse_x/y/norm_x/norm_y`, `pg_delta`, `pg_frame`, `pg_key_down`, `pg_key_down_name`, `pg_surface_*`
+- graphics: `gfx_new`, `gfx_free`, `gfx_width`, `gfx_height`, `gfx_clear`, `gfx_set`, `gfx_get`, `gfx_line`, `gfx_rect`, `gfx_save_ppm`, `gfx_draw_bitmap`, `gfx_text`, `gfx_text_width`
+- bitmaps/renderers: `bitmap_new`, `bitmap_load`, `bitmap_free`, `bitmap_width`, `bitmap_height`, `bitmap_get`, `bitmap_set`, `bitmap_save_ppm`, `renderer_set_backend`, `renderer_backend`, `renderer_supports`, `renderer_select_accelerated`, `renderer_set_hardware_acceleration`, `renderer_is_accelerated`
+- game runtime: `game_new`, `game_free`, `game_width`, `game_height`, `game_set_target_fps`, `game_set_fixed_dt`, `game_set_window_mode`, `game_window_mode`, `game_set_windowed`, `game_set_windowed_fullscreen`, `game_set_fullscreen_mode`, `game_set_interpolation`, `game_interpolated_delta`, `game_should_close`, `game_begin`, `game_poll`, `game_present`, `game_end`, `game_delta`, `game_frame`, `game_clear`, `game_set`, `game_get`, `game_line`, `game_rect`, `game_draw_gfx`, `game_draw_bitmap`, `game_text`, `game_text_width`, `game_save_ppm`, `game_checksum`
+- pygame-like aliases: `pg_init`, `pg_quit`, `pg_should_quit`, `pg_begin`, `pg_end`, `pg_set_target_fps`, `pg_set_fixed_dt`, `pg_set_window_mode`, `pg_window_mode`, `pg_set_windowed`, `pg_set_windowed_fullscreen`, `pg_set_interpolation`, `pg_interpolated_delta`, `pg_clear`, `pg_draw_pixel`, `pg_draw_line`, `pg_draw_rect`, `pg_blit`, `pg_draw_bitmap`, `pg_draw_text`, `pg_get_pixel`, `pg_save_ppm`, `pg_checksum`, `pg_mouse_x/y/norm_x/norm_y`, `pg_delta`, `pg_frame`, `pg_key_down`, `pg_key_down_name`, `pg_surface_*`, `pg_load_bitmap`, `pg_bitmap_free`
 - numpy-like vectors: `np_new`, `np_free`, `np_len`, `np_get`, `np_set`, `np_copy`, `np_fill`, `np_from_range`, `np_linspace`, `np_sum`, `np_mean`, `np_min`, `np_max`, `np_dot`, `np_add`, `np_sub`, `np_mul`, `np_div`, `np_add_scalar`, `np_mul_scalar`, `np_clip`, `np_abs`
 - normalized mouse input: `game_mouse_x`, `game_mouse_y`, `game_mouse_norm_x`, `game_mouse_norm_y`
+- multicore/task controls: `spawn`, `await`, `await_all`, `task_hardware_threads`, `task_set_worker_count`, `task_worker_count`, `task_set_hyperthreading`, `task_hyperthreading_enabled`
 - physics/camera/input: `phys_new`, `phys_free`, `phys_set_position`, `phys_set_velocity`, `phys_move`, `phys_apply_force`, `phys_step`, `phys_get_x/y/z`, `phys_get_vx/vy/vz`, `phys_is_soft`, `camera_bind`, `camera_target`, `camera_set_offset`, `camera_get_x/y/z`, `key_down`, `key_down_name`
 - `sqrt`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`
 - `exp`, `log`, `log10`, `floor`, `ceil`, `round`, `pow`

@@ -309,7 +309,7 @@ main() -> i64 do
 end
 ```
 
-## 7. Native Graphics (2D Raster)
+## 7. Native Graphics, Bitmaps, Text, and Renderer Selection
 
 Graphics are built in and require no external package.
 
@@ -324,6 +324,26 @@ gfx_get(canvas: i64, x: i64, y: i64) -> i64
 gfx_line(canvas: i64, x0: i64, y0: i64, x1: i64, y1: i64, r: i64, g: i64, b: i64) -> void
 gfx_rect(canvas: i64, x: i64, y: i64, w: i64, h: i64, r: i64, g: i64, b: i64, fill: bool) -> void
 gfx_save_ppm(canvas: i64, path: str) -> bool
+gfx_draw_bitmap(canvas: i64, bitmap: i64, dst_x: i64, dst_y: i64) -> void
+gfx_text(canvas: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void
+gfx_text_width(text: str) -> i64
+
+bitmap_new(width: i64, height: i64) -> i64
+bitmap_load(path: str) -> i64
+bitmap_free(bitmap: i64) -> void
+bitmap_width(bitmap: i64) -> i64
+bitmap_height(bitmap: i64) -> i64
+bitmap_get(bitmap: i64, x: i64, y: i64) -> i64
+bitmap_set(bitmap: i64, x: i64, y: i64, r: i64, g: i64, b: i64) -> void
+bitmap_save_ppm(bitmap: i64, path: str) -> bool
+
+renderer_set_backend(name: str) -> bool
+renderer_backend() -> str
+renderer_supports(name: str) -> bool
+renderer_set_hardware_acceleration(enabled: bool) -> bool
+renderer_hardware_acceleration_enabled() -> bool
+renderer_select_accelerated(preferred: str) -> bool
+renderer_is_accelerated() -> bool
 ```
 
 Notes:
@@ -333,16 +353,29 @@ Notes:
 - colors are clamped to `0..255`.
 - `gfx_get` returns packed RGB: `(r << 16) | (g << 8) | b`, or `-1` when invalid/out of range.
 - `gfx_save_ppm` writes a binary PPM (`P6`) image.
+- `bitmap_*` uses the same fast surface storage as `gfx_*`; free handles with `bitmap_free`.
+- `bitmap_load` supports binary/text PPM (`P6`/`P3`) and uncompressed 24/32-bit BMP.
+- `gfx_draw_bitmap` clips blits automatically; off-screen pixels are ignored safely.
+- `gfx_text` draws a built-in 5x7 raster font for fast debug overlays, UI labels, and HUD text.
+- `renderer_set_backend` accepts `software`, `opengl`/`gl`, and `vulkan`/`vk`.
+- `renderer_select_accelerated("opengl")` or `renderer_select_accelerated("vulkan")` selects an accelerated backend preference and enables the acceleration request flag.
+- `renderer_set_hardware_acceleration(false)` keeps the selected backend name but reports `renderer_is_accelerated() == false`.
+- current OpenGL/Vulkan support is a compatibility/capability selection path; the built-in renderer remains deterministic software unless a native accelerated backend is linked later.
 
 Example:
 
 ```linescript
 main() -> i64 do
   declare g = gfx_new(256, 256)
+  declare img = bitmap_new(16, 16)
   gfx_clear(g, 20, 20, 30)
+  bitmap_set(img, 0, 0, 255, 170, 40)
+  gfx_draw_bitmap(g, img, 20, 20)
+  gfx_text(g, 20, 44, "LineScript", 240, 245, 255)
   gfx_line(g, 0, 0, 255, 255, 255, 60, 60)
   gfx_rect(g, 40, 40, 120, 80, 40, 180, 255, false)
   println(gfx_save_ppm(g, "frame.ppm"))
+  bitmap_free(img)
   gfx_free(g)
   return 0
 end
@@ -359,6 +392,16 @@ game_set_target_fps(game: i64, fps: i64) -> void
 game_set_fixed_dt(game: i64, dt_seconds: f64) -> void
 game_set_fullscreen(game: i64, enabled: bool) -> void
 game_is_fullscreen(game: i64) -> bool
+game_set_window_mode(game: i64, mode: str) -> bool
+game_window_mode(game: i64) -> str
+game_set_windowed(game: i64) -> void
+game_set_windowed_fullscreen(game: i64) -> void
+game_set_fullscreen_mode(game: i64) -> void
+game_set_interpolation(game: i64, enabled: bool) -> void
+game_interpolation_enabled(game: i64) -> bool
+game_set_interpolation_alpha(game: i64, alpha: f64) -> void
+game_interpolation_alpha(game: i64) -> f64
+game_interpolated_delta(game: i64) -> f64
 game_should_close(game: i64) -> bool
 game_begin(game: i64) -> void
 game_poll(game: i64) -> void
@@ -380,6 +423,9 @@ game_get(game: i64, x: i64, y: i64) -> i64
 game_line(game: i64, x0: i64, y0: i64, x1: i64, y1: i64, r: i64, g: i64, b: i64) -> void
 game_rect(game: i64, x: i64, y: i64, w: i64, h: i64, r: i64, g: i64, b: i64, fill: bool) -> void
 game_draw_gfx(game: i64, canvas: i64, dst_x: i64, dst_y: i64) -> void
+game_draw_bitmap(game: i64, bitmap: i64, dst_x: i64, dst_y: i64) -> void
+game_text(game: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void
+game_text_width(text: str) -> i64
 game_save_ppm(game: i64, path: str) -> bool
 game_checksum(game: i64) -> i64
 ```
@@ -393,6 +439,11 @@ Notes:
 - `game_set_fixed_dt` forces deterministic frame delta.
 - `game_set_target_fps(0)` disables frame sleep throttling.
 - `game_set_fullscreen` toggles native fullscreen on Windows visible windows.
+- `game_set_window_mode` accepts `windowed`, `fullscreen`, `windowed_fullscreen`, `borderless`, and `borderless_fullscreen`.
+- headless mode stores the requested window mode for logic/tests, while `game_is_fullscreen` stays `false`.
+- visible Windows windows map `fullscreen` and `windowed_fullscreen` to a borderless monitor-sized native window.
+- interpolation is optional smoothing for frame timing; `game_delta` remains raw and `game_interpolated_delta` returns the smoothed value.
+- `game_set_interpolation_alpha` clamps to `0.0..1.0`.
 - `game_is_fullscreen` reports fullscreen state (`false` for headless/non-Windows).
 - mouse coordinates are normalized from window client size into internal simulation resolution.
 - `game_mouse_x/y` return simulation-space coordinates.
@@ -417,6 +468,7 @@ main() -> i64 do
     game_rect(game, mx - 3, my - 3, 6, 6, 120, 255, 120, true)
     game_rect(game, 30, 30, 80, 50, 255, 170, 60, true)
     game_line(game, 0, 0, 319, 179, 90, 220, 255)
+    game_text(game, 12, 12, "HUD", 240, 245, 255)
     game_end(game)
   end
 
@@ -571,6 +623,11 @@ Behavior:
 spawn(worker()) -> i64
 await(task_id: i64) -> void
 await_all() -> void
+task_hardware_threads() -> i64
+task_set_worker_count(count: i64) -> void
+task_worker_count() -> i64
+task_set_hyperthreading(enabled: bool) -> void
+task_hyperthreading_enabled() -> bool
 ```
 
 Parallel loop primitive:
@@ -583,6 +640,11 @@ end
 
 Rules:
 - `spawn` target must be zero-arg and return `void`.
+- `task_hardware_threads` returns logical CPU threads reported by the OS.
+- `task_set_hyperthreading(false)` also covers AMD SMT as the same logical-thread policy.
+- `task_worker_count()` returns the explicit worker override or an automatic count derived from hardware threads.
+- `task_set_worker_count(0)` resets worker count to automatic.
+- OpenMP-enabled `parallel for` builds use this worker count when `omp.h` is available; otherwise the setting is stored for deterministic script logic.
 - `parallel for` forbids `break` and `continue`.
 - `parallel for` forbids assignments to outer-scope variables.
 
@@ -600,11 +662,23 @@ pg_set_target_fps(game: i64, fps: i64) -> void
 pg_set_fixed_dt(game: i64, dt_seconds: f64) -> void
 pg_set_fullscreen(game: i64, enabled: bool) -> void
 pg_is_fullscreen(game: i64) -> bool
+pg_set_window_mode(game: i64, mode: str) -> bool
+pg_window_mode(game: i64) -> str
+pg_set_windowed(game: i64) -> void
+pg_set_windowed_fullscreen(game: i64) -> void
+pg_set_fullscreen_mode(game: i64) -> void
+pg_set_interpolation(game: i64, enabled: bool) -> void
+pg_interpolation_enabled(game: i64) -> bool
+pg_set_interpolation_alpha(game: i64, alpha: f64) -> void
+pg_interpolation_alpha(game: i64) -> f64
+pg_interpolated_delta(game: i64) -> f64
 pg_clear(game: i64, r: i64, g: i64, b: i64) -> void
 pg_draw_pixel(game: i64, x: i64, y: i64, r: i64, g: i64, b: i64) -> void
 pg_draw_line(game: i64, x0: i64, y0: i64, x1: i64, y1: i64, r: i64, g: i64, b: i64) -> void
 pg_draw_rect(game: i64, x: i64, y: i64, w: i64, h: i64, r: i64, g: i64, b: i64, fill: bool) -> void
 pg_blit(game: i64, surface: i64, dst_x: i64, dst_y: i64) -> void
+pg_draw_bitmap(game: i64, bitmap: i64, dst_x: i64, dst_y: i64) -> void
+pg_draw_text(game: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void
 pg_get_pixel(game: i64, x: i64, y: i64) -> i64
 pg_save_ppm(game: i64, path: str) -> bool
 pg_checksum(game: i64) -> i64
@@ -628,6 +702,10 @@ pg_surface_get(surface: i64, x: i64, y: i64) -> i64
 pg_surface_line(surface: i64, x0: i64, y0: i64, x1: i64, y1: i64, r: i64, g: i64, b: i64) -> void
 pg_surface_rect(surface: i64, x: i64, y: i64, w: i64, h: i64, r: i64, g: i64, b: i64, fill: bool) -> void
 pg_surface_save_ppm(surface: i64, path: str) -> bool
+pg_surface_draw_bitmap(surface: i64, bitmap: i64, dst_x: i64, dst_y: i64) -> void
+pg_surface_text(surface: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void
+pg_load_bitmap(path: str) -> i64
+pg_bitmap_free(bitmap: i64) -> void
 ```
 
 Example:

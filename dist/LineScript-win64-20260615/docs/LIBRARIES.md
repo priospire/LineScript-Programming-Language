@@ -62,8 +62,12 @@ Functions:
 - `ls_game_clear_dark(game: i64) -> void`
 - `ls_game_center_x(game: i64) -> i64`
 - `ls_game_center_y(game: i64) -> i64`
+- `ls_game_use_backend(name: str) -> bool`
+- `ls_game_backend() -> str`
+- `ls_game_backend_ready(name: str) -> bool`
 
 `ls_game_toggle_fullscreen` uses the native fullscreen API on Windows visible windows and safely no-ops in headless mode.
+Renderer backend helpers accept `software`, `opengl`, and `vulkan`; hardware acceleration depends on whether a native backend has been linked for that platform.
 
 ## Window Pack
 
@@ -91,6 +95,9 @@ Functions:
 - `ls_ui_panel(game: i64, x: i64, y: i64, w: i64, h: i64) -> void`
 - `ls_ui_button(game: i64, x: i64, y: i64, w: i64, h: i64, hot: bool) -> void`
 - `ls_ui_progress(game: i64, x: i64, y: i64, w: i64, h: i64, current: i64, maxv: i64) -> void`
+- `ls_ui_label(game: i64, x: i64, y: i64, text: str) -> void`
+- `ls_ui_label_color(game: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void`
+- `ls_ui_image(game: i64, bitmap: i64, x: i64, y: i64) -> void`
 
 The UI pack is immediate-mode and intentionally small. It is meant for debug overlays, tools, menus, and early game prototypes.
 
@@ -105,6 +112,9 @@ Functions:
 - `ls_2d_draw_border(game: i64, r: i64, g: i64, b: i64) -> void`
 - `ls_2d_draw_grid(game: i64, cell: i64, r: i64, g: i64, b: i64) -> void`
 - `ls_2d_fill_canvas(canvas: i64, r: i64, g: i64, b: i64) -> void`
+- `ls_2d_draw_bitmap(game: i64, bitmap: i64, x: i64, y: i64) -> void`
+- `ls_2d_draw_text(game: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void`
+- `ls_2d_canvas_text(canvas: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void`
 
 The grid helper ignores non-positive cell sizes so a bad value does not hang a game loop.
 

@@ -1,0 +1,40 @@
+main() -> i64 do
+  declare bmp = bitmap_new(4, 3)
+  bitmap_set(bmp, 0, 0, 10, 20, 30)
+  bitmap_set(bmp, 1, 0, 40, 50, 60)
+
+  println(bitmap_width(bmp))
+  println(bitmap_height(bmp))
+  println(bitmap_get(bmp, 0, 0))
+  println(bitmap_save_ppm(bmp, "tests/artifacts/bitmap_text_renderer.ppm"))
+
+  declare loaded = bitmap_load("tests/artifacts/bitmap_text_renderer.ppm")
+  println(bitmap_width(loaded))
+  println(bitmap_get(loaded, 0, 0))
+
+  declare canvas = gfx_new(32, 16)
+  gfx_clear(canvas, 0, 0, 0)
+  gfx_draw_bitmap(canvas, loaded, 2, 2)
+  gfx_text(canvas, 0, 8, "LS", 255, 255, 255)
+  println(gfx_get(canvas, 2, 2))
+  println(gfx_text_width("LS"))
+
+  declare game = game_new(32, 16, "ui", false)
+  game_clear(game, 0, 0, 0)
+  game_draw_bitmap(game, bmp, 1, 1)
+  game_text(game, 0, 8, "A1", 100, 120, 140)
+  println(game_get(game, 1, 1))
+  println(game_text_width("A1"))
+
+  println(renderer_backend())
+  println(renderer_supports("opengl"))
+  println(renderer_set_backend("vulkan"))
+  println(renderer_backend())
+  println(renderer_is_accelerated())
+
+  game_free(game)
+  gfx_free(canvas)
+  bitmap_free(loaded)
+  bitmap_free(bmp)
+  return 0
+end

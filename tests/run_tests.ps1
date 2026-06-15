@@ -136,6 +136,8 @@ $runtimeTests = @(
   [PSCustomObject]@{ Name = "array_join_pop_map"; Sources = @("tests\\cases\\runtime\\array_join_pop_map.lsc"); Expected = "a,b,c`ntrue`nc`n2`n10`nfalse`n1" },
   [PSCustomObject]@{ Name = "graphics_basic"; Sources = @("tests\\cases\\runtime\\graphics_basic.lsc"); Expected = "65280`n65280`n255`n65280`n8`n8" },
   [PSCustomObject]@{ Name = "graphics_edge_cases"; Sources = @("tests\\cases\\runtime\\graphics_edge_cases.lsc"); Expected = "-1`n65292`n-1`n-1`n329223`ntrue`nfalse" },
+  [PSCustomObject]@{ Name = "bitmap_text_renderer"; Sources = @("tests\\cases\\runtime\\bitmap_text_renderer.lsc"); Expected = "4`n3`n660510`ntrue`n4`n660510`n660510`n12`n660510`n12`nsoftware`ntrue`ntrue`nvulkan`nfalse" },
+  [PSCustomObject]@{ Name = "multicore_window_rendering"; Sources = @("tests\\cases\\runtime\\multicore_window_rendering.lsc"); Expected = "1`ntrue`nfalse`n2`n1`nsoftware`ntrue`nopengl`ntrue`ntrue`ntrue`nfalse`nwindowed`ntrue`nwindowed_fullscreen`nfalse`nfullscreen`nwindowed`ntrue`n25`n175`nwindowed_fullscreen`nfalse" },
   [PSCustomObject]@{ Name = "pygame_aliases"; Sources = @("tests\\cases\\runtime\\pygame_aliases.lsc"); Expected = "1`n65280`n3941241610301994966`n1`nfalse" },
   [PSCustomObject]@{ Name = "numpy_basic"; Sources = @("tests\\cases\\runtime\\numpy_basic.lsc"); Expected = "5`n10`n40`n5`n300`n2`n4`n5`n6" },
   [PSCustomObject]@{ Name = "paradigms_basics"; Sources = @("tests\\cases\\runtime\\paradigms_basics.lsc"); Expected = "45`nLineScript`ntrue`n2`n7`n1.5`n9`n2.5`n10`n1" },
@@ -229,6 +231,8 @@ $compileFailTests = @(
   [PSCustomObject]@{ Name = "game_mouse_bad_types"; Source = "tests\\cases\\compile_fail\\game_mouse_bad_types.lsc"; Contains = "arg 1 cannot convert 'str' to 'i64'" },
   [PSCustomObject]@{ Name = "game_scroll_bad_types"; Source = "tests\\cases\\compile_fail\\game_scroll_bad_types.lsc"; Contains = "arg 1 cannot convert 'str' to 'i64'" },
   [PSCustomObject]@{ Name = "game_mouse_down_bad_types"; Source = "tests\\cases\\compile_fail\\game_mouse_down_bad_types.lsc"; Contains = "arg 2 cannot convert 'str' to 'i64'" },
+  [PSCustomObject]@{ Name = "multicore_window_bad_types"; Source = "tests\\cases\\compile_fail\\multicore_window_bad_types.lsc"; Contains = "arg 1 cannot convert 'str' to 'i64'" },
+  [PSCustomObject]@{ Name = "bitmap_bad_types"; Source = "tests\\cases\\compile_fail\\bitmap_bad_types.lsc"; Contains = "arg 1 cannot convert 'str' to 'i64'" },
   [PSCustomObject]@{ Name = "generic_numeric_bad_types"; Source = "tests\\cases\\compile_fail\\generic_numeric_bad_types.lsc"; Contains = "function 'max' requires numeric args" },
   [PSCustomObject]@{ Name = "operator_override_bad_arity"; Source = "tests\\cases\\compile_fail\\operator_override_bad_arity.lsc"; Contains = "expects exactly 2 parameters" },
   [PSCustomObject]@{ Name = "operator_method_bad_arity"; Source = "tests\\cases\\compile_fail\\operator_method_bad_arity.lsc"; Contains = "expects exactly 1 parameter" },
@@ -341,7 +345,7 @@ $cliInfoTests = @(
   [PSCustomObject]@{
     Name = "flag_linescript_version"
     Args = @("--LineScript")
-    Contains = "LineScript version 1.5.0 (Velocity update)"
+    Contains = "LineScript version 1.5.1 (Velocity update)"
   },
   [PSCustomObject]@{
     Name = "flag_undefined_warning"

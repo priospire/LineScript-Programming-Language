@@ -163,7 +163,7 @@
     },
     "builtinAsyncTime": {
       "name": "support.function.linescript.runtime",
-      "match": "\\b(clock_ms|clock_us|stateSpeed|spawn|await|await_all|FreeConsole)\\b"
+      "match": "\\b(clock_ms|clock_us|stateSpeed|spawn|await|await_all|task_[A-Za-z0-9_]+|FreeConsole)\\b"
     },
     "builtinNumeric": {
       "name": "support.function.linescript.numeric",
@@ -171,7 +171,7 @@
     },
     "builtinGraphics": {
       "name": "support.function.linescript.graphics",
-      "match": "\\b(gfx_[A-Za-z0-9_]+|game_[A-Za-z0-9_]+|pg_[A-Za-z0-9_]+)\\b"
+      "match": "\\b(gfx_[A-Za-z0-9_]+|game_[A-Za-z0-9_]+|pg_[A-Za-z0-9_]+|bitmap_[A-Za-z0-9_]+|renderer_[A-Za-z0-9_]+)\\b"
     },
     "builtinPhysics": {
       "name": "support.function.linescript.physics",

@@ -1,6 +1,6 @@
 # LineScript API Reference (Complete)
 
-This is the exhaustive API reference for LineScript 1.5.0, the Velocity update.
+This is the exhaustive API reference for LineScript 1.5.1, the Velocity Update.
 
 Scope covered in this file:
 - key detection and input polling APIs
@@ -225,11 +225,19 @@ Behavior:
 spawn(fn()) -> i64
 await(task_id: i64) -> void
 await_all() -> void
+task_hardware_threads() -> i64
+task_set_worker_count(count: i64) -> void
+task_worker_count() -> i64
+task_set_hyperthreading(enabled: bool) -> void
+task_hyperthreading_enabled() -> bool
 parallel for i in start..end [step s] do ... end
 ```
 
 Notes:
 - `spawn` target must take zero args and return `void`.
+- `task_hardware_threads` reports OS logical CPU threads.
+- `task_set_hyperthreading(false)` is the SMT/hyperthreading preference for automatic worker counts.
+- `task_set_worker_count(0)` restores automatic worker count.
 - `parallel for` rejects `break/continue` and outer-variable writes.
 
 ## Native HTTP APIs
@@ -375,7 +383,29 @@ gfx_get(canvas: i64, x: i64, y: i64) -> i64
 gfx_line(canvas: i64, x0: i64, y0: i64, x1: i64, y1: i64, r: i64, g: i64, b: i64) -> void
 gfx_rect(canvas: i64, x: i64, y: i64, w: i64, h: i64, r: i64, g: i64, b: i64, fill: bool) -> void
 gfx_save_ppm(canvas: i64, path: str) -> bool
+gfx_draw_bitmap(canvas: i64, bitmap: i64, dst_x: i64, dst_y: i64) -> void
+gfx_text(canvas: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void
+gfx_text_width(text: str) -> i64
+bitmap_new(width: i64, height: i64) -> i64
+bitmap_load(path: str) -> i64
+bitmap_free(bitmap: i64) -> void
+bitmap_width(bitmap: i64) -> i64
+bitmap_height(bitmap: i64) -> i64
+bitmap_get(bitmap: i64, x: i64, y: i64) -> i64
+bitmap_set(bitmap: i64, x: i64, y: i64, r: i64, g: i64, b: i64) -> void
+bitmap_save_ppm(bitmap: i64, path: str) -> bool
+renderer_set_backend(name: str) -> bool
+renderer_backend() -> str
+renderer_supports(name: str) -> bool
+renderer_set_hardware_acceleration(enabled: bool) -> bool
+renderer_hardware_acceleration_enabled() -> bool
+renderer_select_accelerated(preferred: str) -> bool
+renderer_is_accelerated() -> bool
 ```
+
+- Backend names: `software`, `raster`, `cpu`, `opengl`, `gl`, `vulkan`, `vk`.
+- `renderer_select_accelerated` rejects software backends and enables the acceleration request flag.
+- `renderer_is_accelerated` reports the selected accelerated preference, not a guaranteed GPU draw path.
 
 ## Game Runtime APIs
 
@@ -388,6 +418,16 @@ game_set_target_fps(game: i64, fps: i64) -> void
 game_set_fixed_dt(game: i64, dt_seconds: f64) -> void
 game_set_fullscreen(game: i64, enabled: bool) -> void
 game_is_fullscreen(game: i64) -> bool
+game_set_window_mode(game: i64, mode: str) -> bool
+game_window_mode(game: i64) -> str
+game_set_windowed(game: i64) -> void
+game_set_windowed_fullscreen(game: i64) -> void
+game_set_fullscreen_mode(game: i64) -> void
+game_set_interpolation(game: i64, enabled: bool) -> void
+game_interpolation_enabled(game: i64) -> bool
+game_set_interpolation_alpha(game: i64, alpha: f64) -> void
+game_interpolation_alpha(game: i64) -> f64
+game_interpolated_delta(game: i64) -> f64
 game_should_close(game: i64) -> bool
 game_begin(game: i64) -> void
 game_end(game: i64) -> void
@@ -411,9 +451,16 @@ game_get(game: i64, x: i64, y: i64) -> i64
 game_line(game: i64, x0: i64, y0: i64, x1: i64, y1: i64, r: i64, g: i64, b: i64) -> void
 game_rect(game: i64, x: i64, y: i64, w: i64, h: i64, r: i64, g: i64, b: i64, fill: bool) -> void
 game_draw_gfx(game: i64, canvas: i64, dst_x: i64, dst_y: i64) -> void
+game_draw_bitmap(game: i64, bitmap: i64, dst_x: i64, dst_y: i64) -> void
+game_text(game: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void
+game_text_width(text: str) -> i64
 game_save_ppm(game: i64, path: str) -> bool
 game_checksum(game: i64) -> i64
 ```
+
+- Window modes: `windowed`, `fullscreen`, `windowed_fullscreen`, `borderless`, `borderless_fullscreen`.
+- Headless game handles store requested window mode but do not enter native fullscreen.
+- `game_interpolated_delta` is frame-time smoothing; `game_delta` remains the raw/fixed step.
 
 ## Pygame-style Alias APIs
 
@@ -427,12 +474,24 @@ pg_set_target_fps(game: i64, fps: i64) -> void
 pg_set_fixed_dt(game: i64, dt_seconds: f64) -> void
 pg_set_fullscreen(game: i64, enabled: bool) -> void
 pg_is_fullscreen(game: i64) -> bool
+pg_set_window_mode(game: i64, mode: str) -> bool
+pg_window_mode(game: i64) -> str
+pg_set_windowed(game: i64) -> void
+pg_set_windowed_fullscreen(game: i64) -> void
+pg_set_fullscreen_mode(game: i64) -> void
+pg_set_interpolation(game: i64, enabled: bool) -> void
+pg_interpolation_enabled(game: i64) -> bool
+pg_set_interpolation_alpha(game: i64, alpha: f64) -> void
+pg_interpolation_alpha(game: i64) -> f64
+pg_interpolated_delta(game: i64) -> f64
 
 pg_clear(game: i64, r: i64, g: i64, b: i64) -> void
 pg_draw_pixel(game: i64, x: i64, y: i64, r: i64, g: i64, b: i64) -> void
 pg_draw_line(game: i64, x0: i64, y0: i64, x1: i64, y1: i64, r: i64, g: i64, b: i64) -> void
 pg_draw_rect(game: i64, x: i64, y: i64, w: i64, h: i64, r: i64, g: i64, b: i64, fill: bool) -> void
 pg_blit(game: i64, surface: i64, x: i64, y: i64) -> void
+pg_draw_bitmap(game: i64, bitmap: i64, x: i64, y: i64) -> void
+pg_draw_text(game: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void
 pg_get_pixel(game: i64, x: i64, y: i64) -> i64
 pg_save_ppm(game: i64, path: str) -> bool
 pg_checksum(game: i64) -> i64
@@ -458,6 +517,10 @@ pg_surface_get(surface: i64, x: i64, y: i64) -> i64
 pg_surface_line(surface: i64, x0: i64, y0: i64, x1: i64, y1: i64, r: i64, g: i64, b: i64) -> void
 pg_surface_rect(surface: i64, x: i64, y: i64, w: i64, h: i64, r: i64, g: i64, b: i64, fill: bool) -> void
 pg_surface_save_ppm(surface: i64, path: str) -> bool
+pg_surface_draw_bitmap(surface: i64, bitmap: i64, x: i64, y: i64) -> void
+pg_surface_text(surface: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void
+pg_load_bitmap(path: str) -> i64
+pg_bitmap_free(bitmap: i64) -> void
 ```
 
 ## NumPy-style Vector APIs

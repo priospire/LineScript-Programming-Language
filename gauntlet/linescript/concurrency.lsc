@@ -1,0 +1,92 @@
+worker_a() -> void do
+  declare buf = np_new(40000)
+  declare bias: i64 = 0
+  for r in 0..8 do
+    bias = clock_us() % 97
+    for i in 0..40000 do
+      np_set(buf, i, to_f64((i * 13 + r + bias) % 1000003))
+    end
+  end
+  np_free(buf)
+end
+
+worker_b() -> void do
+  declare buf = np_new(40000)
+  declare bias: i64 = 0
+  for r in 0..8 do
+    bias = clock_us() % 89
+    for i in 0..40000 do
+      np_set(buf, i, to_f64((i * 17 + r + bias) % 1000003))
+    end
+  end
+  np_free(buf)
+end
+
+worker_c() -> void do
+  declare buf = np_new(40000)
+  declare bias: i64 = 0
+  for r in 0..8 do
+    bias = clock_us() % 83
+    for i in 0..40000 do
+      np_set(buf, i, to_f64((i * 19 + r + bias) % 1000003))
+    end
+  end
+  np_free(buf)
+end
+
+worker_d() -> void do
+  declare buf = np_new(40000)
+  declare bias: i64 = 0
+  for r in 0..8 do
+    bias = clock_us() % 79
+    for i in 0..40000 do
+      np_set(buf, i, to_f64((i * 23 + r + bias) % 1000003))
+    end
+  end
+  np_free(buf)
+end
+
+main() -> i64 do
+  declare seed: i64 = input_i64()
+  declare workers: i64 = input_i64()
+  declare _a: i64 = input_i64()
+  declare _b: i64 = input_i64()
+  if workers < 1 do
+    workers = 1
+  end
+  if workers > 4 do
+    workers = 4
+  end
+
+  declare t0 = clock_us()
+  declare ta = spawn(worker_a())
+  declare tb: i64 = -1
+  declare tc: i64 = -1
+  declare td: i64 = -1
+  if workers >= 2 do
+    tb = spawn(worker_b())
+  end
+  if workers >= 3 do
+    tc = spawn(worker_c())
+  end
+  if workers >= 4 do
+    td = spawn(worker_d())
+  end
+
+  await(ta)
+  if tb >= 0 do
+    await(tb)
+  end
+  if tc >= 0 do
+    await(tc)
+  end
+  if td >= 0 do
+    await(td)
+  end
+
+  declare t1 = clock_us()
+  declare checksum = (seed % 1000003) + workers + _a + _b
+  println(checksum)
+  println(t1 - t0)
+  return 0
+end

@@ -33,3 +33,15 @@ fn ls_ui_progress(game: i64, x: i64, y: i64, w: i64, h: i64, current: i64, maxv:
   game_rect(game, x, y, fill, h, 80, 220, 140, true)
   game_rect(game, x, y, w, h, 100, 120, 150, false)
 end
+
+fn ls_ui_label(game: i64, x: i64, y: i64, text: str) -> void do
+  game_text(game, x, y, text, 232, 238, 248)
+end
+
+fn ls_ui_label_color(game: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void do
+  game_text(game, x, y, text, r, g, b)
+end
+
+fn ls_ui_image(game: i64, bitmap: i64, x: i64, y: i64) -> void do
+  game_draw_bitmap(game, bitmap, x, y)
+end

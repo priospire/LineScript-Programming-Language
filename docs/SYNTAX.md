@@ -356,6 +356,8 @@ end
 Notes:
 - compiled with OpenMP when available (`-fopenmp`)
 - falls back to serial execution when OpenMP is unavailable
+- `task_set_worker_count(n)` controls the preferred worker count; `0` means automatic
+- `task_set_hyperthreading(false)` also covers AMD SMT as a logical-thread policy
 - `break` and `continue` are not allowed inside `parallel for`
 - assigning outer variables inside `parallel for` is rejected
 
@@ -616,13 +618,19 @@ result_free(err)
 Native graphics through builtins (no external package required):
 
 ```linescript
+renderer_set_backend("software")
 declare canvas = gfx_new(320, 200)
+declare bitmap = bitmap_new(16, 16)
 gfx_clear(canvas, 15, 20, 30)
+bitmap_set(bitmap, 0, 0, 255, 170, 40)
+gfx_draw_bitmap(canvas, bitmap, 20, 20)
+gfx_text(canvas, 20, 44, "LineScript", 240, 245, 255)
 gfx_line(canvas, 0, 0, 319, 199, 255, 0, 0)
 gfx_rect(canvas, 20, 20, 80, 50, 0, 200, 255, false)
 gfx_set(canvas, 10, 10, 255, 255, 0)
 println(gfx_get(canvas, 10, 10))
 println(gfx_save_ppm(canvas, "frame.ppm"))
+bitmap_free(bitmap)
 gfx_free(canvas)
 ```
 
@@ -631,6 +639,10 @@ Graphics notes:
 - out-of-bounds draw calls are ignored safely
 - `gfx_get` returns packed RGB `(r << 16) | (g << 8) | b`
 - `gfx_save_ppm` returns `bool`
+- `bitmap_load(path)` supports `P3`/`P6` PPM and uncompressed 24/32-bit BMP
+- `gfx_text`/`game_text` use a built-in 5x7 raster font for HUDs and debug UI
+- renderer names accepted today: `software`, `opengl`, `vulkan`; OpenGL/Vulkan are compatibility targets until a native accelerated backend is linked
+- `renderer_select_accelerated("opengl")` or `renderer_select_accelerated("vulkan")` records a hardware-acceleration preference
 
 ### Native Physics, Camera, and Input Polling
 
@@ -663,6 +675,8 @@ Native game runtime builtins:
 ```linescript
 declare game = game_new(320, 180, "LineScript Game", true)
 game_set_target_fps(game, 60)
+game_set_window_mode(game, "windowed")
+game_set_interpolation(game, true)
 
 while not game_should_close(game) do
   game_begin(game)
@@ -672,6 +686,7 @@ while not game_should_close(game) do
   game_rect(game, mx - 4, my - 4, 8, 8, 120, 255, 120, true)
   game_rect(game, 30, 30, 80, 50, 255, 170, 60, true)
   game_line(game, 0, 0, 319, 179, 90, 220, 255)
+  game_text(game, 12, 12, "HUD", 240, 245, 255)
   game_end(game)
 end
 
@@ -682,7 +697,12 @@ Game runtime notes:
 - `visible=false` enables deterministic headless mode (useful in tests)
 - `game_set_fixed_dt(game, dt)` sets deterministic per-frame `game_delta(game)`
 - `game_draw_gfx(game, canvas, x, y)` blits a `gfx_*` canvas into the game surface
+- `game_draw_bitmap(game, bitmap, x, y)` blits a bitmap/surface into the game surface
+- `game_text(game, x, y, text, r, g, b)` draws built-in raster text
 - `game_checksum(game)` returns a deterministic frame checksum
+- `game_set_window_mode(game, "windowed_fullscreen")` selects borderless/windowed fullscreen mode
+- `game_set_fullscreen_mode(game)` requests fullscreen mode
+- `game_interpolated_delta(game)` returns smoothed frame timing when interpolation is enabled
 - `game_mouse_x/y` map mouse position into simulation-space coordinates
 - `game_mouse_norm_x/y` return normalized `[0.0, 1.0]` mouse coordinates
 

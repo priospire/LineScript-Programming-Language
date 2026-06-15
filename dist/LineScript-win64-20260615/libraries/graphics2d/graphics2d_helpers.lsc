@@ -26,3 +26,15 @@ end
 fn ls_2d_fill_canvas(canvas: i64, r: i64, g: i64, b: i64) -> void do
   gfx_clear(canvas, r, g, b)
 end
+
+fn ls_2d_draw_bitmap(game: i64, bitmap: i64, x: i64, y: i64) -> void do
+  game_draw_bitmap(game, bitmap, x, y)
+end
+
+fn ls_2d_draw_text(game: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void do
+  game_text(game, x, y, text, r, g, b)
+end
+
+fn ls_2d_canvas_text(canvas: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void do
+  gfx_text(canvas, x, y, text, r, g, b)
+end

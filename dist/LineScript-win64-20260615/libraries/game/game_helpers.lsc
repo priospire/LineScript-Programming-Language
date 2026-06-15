@@ -25,3 +25,15 @@ end
 fn ls_game_center_y(game: i64) -> i64 do
   return game_height(game) / 2
 end
+
+fn ls_game_use_backend(name: str) -> bool do
+  return renderer_set_backend(name)
+end
+
+fn ls_game_backend() -> str do
+  return renderer_backend()
+end
+
+fn ls_game_backend_ready(name: str) -> bool do
+  return renderer_supports(name)
+end

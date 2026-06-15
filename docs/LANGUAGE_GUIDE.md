@@ -304,6 +304,9 @@ worker() -> void do
 end
 
 main() -> i64 do
+  println(task_hardware_threads())
+  task_set_hyperthreading(false)
+  task_set_worker_count(4)
   declare t = spawn(worker())
   await(t)
   await_all()
@@ -314,6 +317,8 @@ end
 Rules:
 - `spawn` must be `spawn(fn())`
 - `fn` must take zero args and return `void`
+- `task_set_hyperthreading(false)` is the CPU policy switch for Intel Hyper-Threading and AMD SMT.
+- `task_set_worker_count(0)` returns to automatic worker count.
 - `parallel for` does not allow `break`/`continue`
 
 Formatting helper:
@@ -437,12 +442,19 @@ println(map_get(m, "x"))
 Native graphics (2D raster):
 
 ```linescript
+renderer_set_backend("software")
+renderer_select_accelerated("opengl")
 declare canvas = gfx_new(320, 200)
+declare bitmap = bitmap_new(16, 16)
 gfx_clear(canvas, 20, 20, 30)
+bitmap_set(bitmap, 0, 0, 255, 170, 40)
+gfx_draw_bitmap(canvas, bitmap, 20, 20)
+gfx_text(canvas, 20, 44, "LineScript", 240, 245, 255)
 gfx_line(canvas, 0, 0, 319, 199, 255, 0, 0)
 gfx_rect(canvas, 20, 20, 80, 50, 0, 200, 255, false)
 println(gfx_get(canvas, 10, 10))
 println(gfx_save_ppm(canvas, "frame.ppm"))
+bitmap_free(bitmap)
 gfx_free(canvas)
 ```
 
@@ -450,6 +462,10 @@ Notes:
 - out-of-range pixel writes are ignored safely
 - `gfx_get` returns packed RGB `(r << 16) | (g << 8) | b`
 - `gfx_save_ppm` writes a `.ppm` image and returns `bool`
+- `bitmap_load` reads `P3`/`P6` PPM and uncompressed 24/32-bit BMP
+- `gfx_text` and `game_text` draw a built-in 5x7 font for labels, HUDs, and debug UI
+- `renderer_set_backend("opengl")` and `renderer_set_backend("vulkan")` are compatibility selectors; software rendering is the default built-in path today
+- `renderer_select_accelerated("opengl")` or `renderer_select_accelerated("vulkan")` records a hardware-acceleration preference for accelerated backends
 
 Physics + camera + input polling:
 
@@ -477,6 +493,9 @@ Native game loop (smooth window mode + deterministic test mode):
 ```linescript
 declare game = game_new(320, 180, "LineScript Game", true)
 game_set_target_fps(game, 60)
+game_set_window_mode(game, "windowed_fullscreen")
+game_set_interpolation(game, true)
+game_set_interpolation_alpha(game, 0.5)
 
 while not game_should_close(game) do
   game_begin(game)
@@ -486,6 +505,7 @@ while not game_should_close(game) do
   game_rect(game, mx - 4, my - 4, 8, 8, 120, 255, 120, true)
   game_rect(game, 30, 30, 80, 50, 255, 170, 60, true)
   game_line(game, 0, 0, 319, 179, 90, 220, 255)
+  game_text(game, 12, 12, "HUD", 240, 245, 255)
   game_end(game)
 end
 
@@ -499,6 +519,8 @@ Deterministic headless mode for tests:
 - verify output with `game_checksum(game)`
 - `game_mouse_x/y` map mouse coordinates to simulation resolution
 - `game_mouse_norm_x/y` return normalized `[0.0, 1.0]`
+- `game_set_window_mode` accepts `windowed`, `fullscreen`, and `windowed_fullscreen`
+- `game_interpolated_delta` returns smoothed frame timing when interpolation is enabled
 
 Pygame-like aliases:
 

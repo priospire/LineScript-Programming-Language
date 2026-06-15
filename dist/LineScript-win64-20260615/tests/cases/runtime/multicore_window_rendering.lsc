@@ -1,0 +1,44 @@
+main() -> i64 do
+  println(task_hardware_threads() >= 1)
+  println(task_hyperthreading_enabled())
+  task_set_hyperthreading(false)
+  println(task_hyperthreading_enabled())
+  task_set_worker_count(2)
+  println(task_worker_count())
+  task_set_worker_count(0)
+  println(task_worker_count() >= 1)
+
+  println(renderer_backend())
+  println(renderer_select_accelerated("opengl"))
+  println(renderer_backend())
+  println(renderer_hardware_acceleration_enabled())
+  println(renderer_is_accelerated())
+  println(renderer_set_hardware_acceleration(false))
+  println(renderer_is_accelerated())
+
+  declare g = game_new(32, 16, "modes", false)
+  println(game_window_mode(g))
+  println(game_set_window_mode(g, "windowed_fullscreen"))
+  println(game_window_mode(g))
+  println(game_is_fullscreen(g))
+  game_set_fullscreen_mode(g)
+  println(game_window_mode(g))
+  game_set_windowed(g)
+  println(game_window_mode(g))
+
+  game_set_interpolation(g, true)
+  println(game_interpolation_enabled(g))
+  game_set_interpolation_alpha(g, 0.25)
+  println(to_i64(round(game_interpolation_alpha(g) * 100.0)))
+  game_set_fixed_dt(g, 0.02)
+  game_begin(g)
+  println(to_i64(round(game_interpolated_delta(g) * 10000.0)))
+
+  pg_set_windowed_fullscreen(g)
+  println(pg_window_mode(g))
+  pg_set_interpolation(g, false)
+  println(pg_interpolation_enabled(g))
+
+  game_free(g)
+  return 0
+end

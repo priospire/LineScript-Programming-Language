@@ -14,6 +14,13 @@ const required = [
   "dict_get",
   "np_sum",
   "game_scroll_y",
+  "game_set_window_mode",
+  "game_interpolated_delta",
+  "pg_set_windowed_fullscreen",
+  "renderer_select_accelerated",
+  "renderer_set_hardware_acceleration",
+  "task_hardware_threads",
+  "task_set_hyperthreading",
   "su.capabilities"
 ];
 

@@ -1,0 +1,24 @@
+main() -> i64 do
+  renderer_set_backend("software")
+
+  declare game = game_new(160, 90, "Bitmap + Text Demo", false)
+  game_set_target_fps(game, 0)
+  game_clear(game, 14, 18, 26)
+
+  declare logo = bitmap_new(32, 18)
+  bitmap_set(logo, 0, 0, 255, 170, 40)
+  bitmap_set(logo, 1, 0, 255, 170, 40)
+  bitmap_set(logo, 0, 1, 255, 170, 40)
+  bitmap_set(logo, 1, 1, 255, 170, 40)
+
+  game_draw_bitmap(game, logo, 12, 12)
+  game_text(game, 12, 40, "LINESCRIPT UI", 240, 245, 255)
+  game_text(game, 12, 52, renderer_backend(), 120, 220, 255)
+
+  println(game_checksum(game))
+  game_save_ppm(game, "examples/ui_bitmap_text_demo.ppm")
+
+  bitmap_free(logo)
+  game_free(game)
+  return 0
+end
