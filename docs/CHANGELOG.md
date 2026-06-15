@@ -37,7 +37,7 @@
 - README, syntax guide, language guide, stdlib reference, and API reference now document the new APIs.
 
 ### Tooling
-- installed `rtk 0.42.4` locally and initialized Codex integration with `rtk init -g --codex`.
+- installed `rtk 0.42.4` locally and initialized local developer tooling.
 
 ## 2026-06-15 (Game/UI Rendering Pass)
 
@@ -260,7 +260,7 @@
 - TextMate syntax highlighting
 - snippets + completion + hover + definition + symbols
 - LSP diagnostics from `lsc --check`
-- suggestion diagnostics with quick fixes (including “Are you sure this is correct?” style hints)
+- suggestion diagnostics with quick fixes (including ?Are you sure this is correct?? style hints)
 - optional file icon theme support for `.lsc/.ls`
 
 ### Changed

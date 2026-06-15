@@ -9,7 +9,7 @@ This file is the source-of-truth handoff context for this workspace.
 - GitHub repository: `https://github.com/priospire/LineScript-Programming-Language`
 - Packaging entrypoint: `scripts/package.ps1`
 - Current release family: LineScript 1.5.1 "Velocity Update"
-- Local RTK setup: `rtk 0.42.4` installed to `%USERPROFILE%\.local\bin`; `rtk init -g --codex` completed.
+- Local RTK setup: `rtk 0.42.4` installed to `%USERPROFILE%\.local\bin`; local developer tooling initialized.
 
 ## Core Files
 
@@ -31,6 +31,19 @@ powershell -ExecutionPolicy Bypass -File tests\run_tests.ps1 -OutputAssuranceRou
 Push-Location vscode-extension\linescript-vscode; npm test; Pop-Location
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ```
+
+## Latest QA Snapshot
+
+- Compiler build: `clang++ -std=c++20 -O3 -Wall -Wextra -pedantic src\lsc.cpp -o lsc.exe` passed.
+- Deterministic suite: `tests\run_tests.ps1 -FrontendCompiler clang++ -BackendCompiler clang` passed `250 / 250`.
+- Stress suite: `tests\run_stress_tests.ps1 -FrontendCompiler clang++ -BackendCompiler clang` passed `21 / 21`.
+- VSCode extension tests: `npm test` passed.
+- Dist smoke test: packaged `dist\LineScript-win64-20260615\lsc.exe` compiled and ran `tests\cases\runtime\multicore_window_rendering.lsc`; generated smoke executable was removed after verification.
+
+## Latest Dist
+
+- Package directory: `dist\LineScript-win64-20260615`
+- Package zip: `dist\LineScript-win64-20260615.zip`
 
 ## Current Architecture Notes
 

@@ -9,7 +9,7 @@ This file is the source-of-truth handoff context for this workspace.
 - GitHub repository: `https://github.com/priospire/LineScript-Programming-Language`
 - Packaging entrypoint: `scripts/package.ps1`
 - Current release family: LineScript 1.5.1 "Velocity Update"
-- Local RTK setup: `rtk 0.42.4` installed to `%USERPROFILE%\.local\bin`; `rtk init -g --codex` completed.
+- Local RTK setup: `rtk 0.42.4` installed to `%USERPROFILE%\.local\bin`; local developer tooling initialized.
 
 ## Core Files
 
