@@ -1,0 +1,6 @@
+main() -> i64 do
+  formatOutput(123) do
+    print("x")
+  end
+  return 0
+end

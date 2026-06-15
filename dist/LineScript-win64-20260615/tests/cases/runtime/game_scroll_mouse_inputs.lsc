@@ -1,0 +1,15 @@
+main() -> i64 do
+  declare g = game_new(64, 32, "m", false)
+  game_begin(g)
+  println(to_i64(round(game_scroll_x(g))))
+  println(to_i64(round(game_scroll_y(g))))
+  println(game_mouse_down(g, 1))
+  println(game_mouse_down_name(g, "LEFT"))
+  println(pg_mouse_down(g, 2))
+  println(pg_mouse_down_name(g, "RIGHT"))
+  println(to_i64(round(pg_scroll_x(g))))
+  println(to_i64(round(pg_scroll_y(g))))
+  game_end(g)
+  game_free(g)
+  return 0
+end

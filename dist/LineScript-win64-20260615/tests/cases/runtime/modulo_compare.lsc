@@ -1,0 +1,12 @@
+main() -> i64 do
+  declare odds: i64 = 0
+  for i in 0..10 do
+    if i % 2 != 0 do
+      odds = odds + 1
+    end
+  end
+  println(odds)
+  println(10 >= 9)
+  println(5 < 2)
+  return 0
+end

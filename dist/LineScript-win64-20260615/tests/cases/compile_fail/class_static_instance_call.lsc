@@ -1,0 +1,11 @@
+class Util do
+  public static fn id(v: i64) -> i64 do
+    return v
+  end
+end
+
+main() -> i64 do
+  declare u: Util = Util()
+  print(u.id(7))
+  return 0
+end

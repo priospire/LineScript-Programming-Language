@@ -1,0 +1,19 @@
+worker() -> void do
+  println("worker")
+end
+
+noop() -> void do
+  return
+end
+
+main() -> i64 do
+  declare t = spawn(worker())
+  await(t)
+
+  declare a = spawn(noop())
+  declare b = spawn(noop())
+  await_all()
+  println(a >= 0)
+  println(b >= 0)
+  return 0
+end

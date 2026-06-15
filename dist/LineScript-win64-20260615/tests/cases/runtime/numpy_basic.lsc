@@ -1,0 +1,33 @@
+main() -> i64 do
+  declare a = np_from_range(0.0, 5.0, 1.0)
+  declare b = np_linspace(1.0, 5.0, 5)
+  println(np_len(a))
+  println(to_i64(round(np_sum(a))))
+  println(to_i64(round(np_dot(a, b))))
+
+  declare c = np_add(a, b)
+  println(to_i64(round(np_get(c, 2))))
+  np_add_scalar(c, 1.0)
+  np_mul_scalar(c, 0.5)
+  println(to_i64(round(np_mean(c) * 100.0)))
+  np_clip(c, 2.0, 4.0)
+  println(to_i64(round(np_min(c))))
+  println(to_i64(round(np_max(c))))
+
+  declare d = np_sub(b, a)
+  println(to_i64(round(np_sum(d))))
+
+  declare e = np_new(3)
+  np_set(e, 0, -1.0)
+  np_set(e, 1, 2.0)
+  np_set(e, 2, -3.0)
+  np_abs(e)
+  println(to_i64(round(np_sum(e))))
+
+  np_free(a)
+  np_free(b)
+  np_free(c)
+  np_free(d)
+  np_free(e)
+  return 0
+end

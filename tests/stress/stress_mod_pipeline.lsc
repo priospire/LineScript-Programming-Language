@@ -1,0 +1,10 @@
+main() -> i64 do
+  declare limit: i64 = 4850001
+  declare acc: i64 = 0
+  for i in 1..limit do
+    declare t = (i * 3) % 97
+    acc = acc + t
+  end
+  println(acc)
+  return 0
+end

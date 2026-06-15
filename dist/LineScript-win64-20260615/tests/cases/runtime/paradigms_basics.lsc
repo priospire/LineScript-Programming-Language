@@ -1,0 +1,28 @@
+sum_i64(n: i64) -> i64 do
+  declare acc: i64 = 0
+  for i in 0..n do
+    acc = acc + i
+  end
+  return acc
+end
+
+main() -> i64 do
+  declare const limit: i64 = 10
+  println(sum_i64(limit))
+
+  declare obj = object_new()
+  object_set(obj, "name", "LineScript")
+  object_set(obj, "type", "language")
+  println(object_get(obj, "name"))
+  println(object_has(obj, "type"))
+  println(object_len(obj))
+
+  println(max(2, 7))
+  println(min(2.5, 1.5))
+  println(abs(-9))
+  println(abs(-2.5))
+  println(clamp(15, 0, 10))
+  println(clamp(1.5, 0.0, 1.0))
+
+  return 0
+end

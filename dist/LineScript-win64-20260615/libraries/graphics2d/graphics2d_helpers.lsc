@@ -1,0 +1,40 @@
+fn ls_2d_clear_night(game: i64) -> void do
+  game_clear(game, 14, 18, 26)
+end
+
+fn ls_2d_draw_crosshair(game: i64, x: i64, y: i64, radius: i64, r: i64, g: i64, b: i64) -> void do
+  game_line(game, x - radius, y, x + radius, y, r, g, b)
+  game_line(game, x, y - radius, x, y + radius, r, g, b)
+end
+
+fn ls_2d_draw_border(game: i64, r: i64, g: i64, b: i64) -> void do
+  game_rect(game, 0, 0, game_width(game), game_height(game), r, g, b, false)
+end
+
+fn ls_2d_draw_grid(game: i64, cell: i64, r: i64, g: i64, b: i64) -> void do
+  if cell <= 0 do
+    return
+  end
+  for x in 0..game_width(game) step cell do
+    game_line(game, x, 0, x, game_height(game) - 1, r, g, b)
+  end
+  for y in 0..game_height(game) step cell do
+    game_line(game, 0, y, game_width(game) - 1, y, r, g, b)
+  end
+end
+
+fn ls_2d_fill_canvas(canvas: i64, r: i64, g: i64, b: i64) -> void do
+  gfx_clear(canvas, r, g, b)
+end
+
+fn ls_2d_draw_bitmap(game: i64, bitmap: i64, x: i64, y: i64) -> void do
+  game_draw_bitmap(game, bitmap, x, y)
+end
+
+fn ls_2d_draw_text(game: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void do
+  game_text(game, x, y, text, r, g, b)
+end
+
+fn ls_2d_canvas_text(canvas: i64, x: i64, y: i64, text: str, r: i64, g: i64, b: i64) -> void do
+  gfx_text(canvas, x, y, text, r, g, b)
+end

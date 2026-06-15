@@ -1,0 +1,12 @@
+sum_to(n: i64) -> i64 do
+  declare total: i64 = 0
+  for i in 1..(n + 1) do
+    total = total + i
+  end
+  return total
+end
+
+main() -> i64 do
+  println(sum_to(10))
+  return 0
+end

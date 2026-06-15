@@ -1,0 +1,21 @@
+main() -> i64 do
+  declare player = phys_new(0.0, 2.0, 0.0, 1.0, false)
+  camera_bind(player)
+  camera_set_offset(0.0, 1.8, -6.0)
+
+  if key_down_name("SPACE") do
+    phys_apply_force(player, 0.0, 8.0, 0.0)
+  end
+
+  phys_step(0.016)
+
+  println("camera_target")
+  println(camera_target())
+  println("camera_y")
+  println(camera_get_y())
+  println("player_x")
+  println(phys_get_x(player))
+
+  phys_free(player)
+  return 0
+end

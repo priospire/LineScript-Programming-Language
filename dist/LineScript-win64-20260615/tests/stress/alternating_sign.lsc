@@ -1,0 +1,12 @@
+main() -> i64 do
+  declare sum: i64 = 0
+  for i in 0..8000000 do
+    if (i % 2) == 0 do
+      sum = sum + i
+    else
+      sum = sum - i
+    end
+  end
+  println(sum)
+  return 0
+end

@@ -1,0 +1,11 @@
+main() -> i64 do
+  declare g = game_new(64, 32, "m", false)
+  game_begin(g)
+  println(to_i64(round(game_mouse_x(g))))
+  println(to_i64(round(game_mouse_y(g))))
+  println(to_i64(round(game_mouse_norm_x(g) * 1000.0)))
+  println(to_i64(round(game_mouse_norm_y(g) * 1000.0)))
+  game_end(g)
+  game_free(g)
+  return 0
+end

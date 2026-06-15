@@ -1,0 +1,4 @@
+main() -> i64 do
+  .freeConsole()
+  return 0
+end

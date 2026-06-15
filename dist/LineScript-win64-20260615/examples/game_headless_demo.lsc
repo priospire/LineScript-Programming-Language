@@ -1,0 +1,17 @@
+main() -> i64 do
+  declare game = game_new(160, 90, "Headless", false)
+  game_set_target_fps(game, 0)
+  game_set_fixed_dt(game, 0.016)
+
+  for f in 0..120 do
+    game_begin(game)
+    game_clear(game, f % 255, (f * 2) % 255, (f * 3) % 255)
+    game_rect(game, 10 + (f % 60), 20, 24, 16, 255, 200, 80, true)
+    game_end(game)
+  end
+
+  println(game_checksum(game))
+  println(game_frame(game))
+  game_free(game)
+  return 0
+end

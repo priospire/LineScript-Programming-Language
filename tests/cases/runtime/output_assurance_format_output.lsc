@@ -1,0 +1,4 @@
+print("A=")
+println(formatOutput(1))
+print("B=")
+println(formatOutput(2))

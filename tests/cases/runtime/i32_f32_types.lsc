@@ -1,0 +1,29 @@
+class Stats do
+  declare count32: i32 = 0
+  declare ratio32: f32 = 0.0
+
+  constructor(c: i32, r: f32) do
+    this.count32 = c
+    this.ratio32 = r
+  end
+
+  bump() -> void do
+    this.count32 += 2
+    this.ratio32 += 0.5
+  end
+end
+
+main() -> i64 do
+  declare a: i32 = 7
+  declare b: f32 = 1.25
+  a += 5
+  b += 0.5
+  println(a)
+  println(b)
+
+  declare s = Stats(3, 2.0)
+  s.bump()
+  println(s.count32)
+  println(s.ratio32)
+  return 0
+end

@@ -1,0 +1,42 @@
+class Counter do
+  declare value: i64 = 0
+  declare name: str = "counter"
+  declare enabled: bool = true
+
+  constructor(start: i64, label: str) do
+    this.value = start
+    this.name = label
+  end
+
+  inc(delta: i64) -> void do
+    if this.enabled do
+      this.value += delta
+    end
+  end
+
+  set_enabled(flag: bool) -> void do
+    this.enabled = flag
+  end
+
+  get() -> i64 do
+    return this.value
+  end
+
+  label() -> str do
+    return this.name
+  end
+end
+
+main() -> i64 do
+  declare c = Counter(10, "main")
+  c.inc(5)
+  c.set_enabled(false)
+  c.inc(7)
+  println(c.get())
+  println(c.label())
+  println(c.enabled)
+  c.enabled = true
+  c.value -= 3
+  println(c.value)
+  return 0
+end

@@ -1,0 +1,4 @@
+declare x: i64 = 1
+if x == 1 do
+  println("ok")
+end

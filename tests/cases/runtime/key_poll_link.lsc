@@ -1,0 +1,12 @@
+main() -> i64 do
+  declare a = key_down(32)
+  declare b = key_down_name("SPACE")
+
+  if (a == true or a == false) and (b == true or b == false) do
+    println(1)
+  else do
+    println(0)
+  end
+
+  return 0
+end

@@ -1,0 +1,15 @@
+main() -> i64 do
+  declare n: i64 = 8000000
+  declare s0: i64 = 0
+  declare s1: i64 = 0
+  declare s2: i64 = 0
+  declare s3: i64 = 0
+  for base in 0..n step 4 do
+    s0 = s0 + base
+    s1 = s1 + (base + 1)
+    s2 = s2 + (base + 2)
+    s3 = s3 + (base + 3)
+  end
+  println(s0 + s1 + s2 + s3)
+  return 0
+end

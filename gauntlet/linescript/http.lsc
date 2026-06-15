@@ -1,0 +1,33 @@
+main() -> i64 do
+  declare port: i64 = input_i64()
+  declare requests: i64 = input_i64()
+  if requests < 1 do
+    requests = 1
+  end
+  declare srv = http_server_listen(port)
+  if srv < 0 do
+    println(-1)
+    println(0)
+    return 0
+  end
+
+  println("READY")
+  declare handled: i64 = 0
+  declare req_bytes: i64 = 0
+  declare t0 = clock_us()
+  while handled < requests do
+    declare c = http_server_accept(srv)
+    if c >= 0 do
+      declare req = http_server_read(c)
+      req_bytes = req_bytes + len(req)
+      http_server_respond_text(c, 200, "ok")
+      http_client_close(c)
+      handled = handled + 1
+    end
+  end
+  declare t1 = clock_us()
+  http_server_close(srv)
+  println(handled)
+  println(t1 - t0)
+  return 0
+end

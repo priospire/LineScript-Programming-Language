@@ -1,0 +1,5 @@
+main() -> i64 do
+  declare g = game_new(8, 8, "g", false)
+  game_draw_gfx(g, "sprite", 0, 0)
+  return 0
+end

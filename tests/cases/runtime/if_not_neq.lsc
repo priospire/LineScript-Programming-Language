@@ -1,0 +1,17 @@
+main() -> i64 do
+  declare x = 5
+
+  if not (x != 5) do
+    println(1)
+  else do
+    println(0)
+  end
+
+  if x != 6 do
+    println(1)
+  else do
+    println(0)
+  end
+
+  return 0
+end

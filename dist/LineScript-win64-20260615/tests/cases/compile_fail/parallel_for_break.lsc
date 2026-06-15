@@ -1,0 +1,6 @@
+main() -> i64 do
+  parallel for i in 0..10 do
+    break
+  end
+  return 0
+end

@@ -1,0 +1,12 @@
+NPP_SAVE
+CD "$(CURRENT_DIRECTORY)"
+
+IF "$(EXT_PART)" == ".lsc" GOTO RUN
+IF "$(EXT_PART)" == ".ls" GOTO RUN
+ECHO Current file is not .lsc/.ls
+GOTO END
+
+:RUN
+"$(CURRENT_DIRECTORY)\linescript.cmd" "$(FULL_CURRENT_PATH)" -O4 --cc clang
+
+:END

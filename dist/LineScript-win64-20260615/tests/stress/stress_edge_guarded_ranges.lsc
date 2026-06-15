@@ -1,0 +1,21 @@
+main() -> i64 do
+  declare acc: i64 = 0
+
+  for outer in 0..20000 do
+    declare start: i64 = (outer % 9) - 4
+    declare stop: i64 = (outer % 11) - 5
+    declare stepv: i64 = (outer % 3) - 1
+
+    if stepv == 0 do
+      acc = acc + 1
+      continue
+    end
+
+    for i in start..stop step stepv do
+      acc = acc + (i * 3 + 1)
+    end
+  end
+
+  println(acc)
+  return 0
+end

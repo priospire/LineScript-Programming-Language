@@ -1,0 +1,9 @@
+worker(x: i64) -> void do
+  println(x)
+end
+
+main() -> i64 do
+  declare t = spawn(worker(1))
+  await(t)
+  return 0
+end

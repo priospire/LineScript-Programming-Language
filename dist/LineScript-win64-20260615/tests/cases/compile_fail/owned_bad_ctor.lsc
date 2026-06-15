@@ -1,0 +1,5 @@
+main() -> i64 do
+  declare owned x: i64 = 42
+  println(x)
+  return 0
+end

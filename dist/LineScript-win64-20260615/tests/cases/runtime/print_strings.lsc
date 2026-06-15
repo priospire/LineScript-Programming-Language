@@ -1,0 +1,10 @@
+main() -> i64 do
+  declare const x: i64 = 5
+  declare const letter: str = "x"
+
+  print("x=")
+  println(x)
+  println(letter)
+  println("hello")
+  return 0
+end

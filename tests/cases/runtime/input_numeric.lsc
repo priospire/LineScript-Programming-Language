@@ -1,0 +1,9 @@
+main() -> i64 do
+  declare a = input_i64()
+  declare b = input_f64()
+  declare c = input_i64()
+  declare d = input_f64()
+  println(a + c)
+  println(to_i64(round((b + d) * 100.0)))
+  return 0
+end

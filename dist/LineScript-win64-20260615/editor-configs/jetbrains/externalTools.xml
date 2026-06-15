@@ -1,0 +1,20 @@
+<application>
+  <component name="ExternalTools">
+    <toolSet name="LineScript">
+      <tool name="LineScript Run Current File (-O4)" description="" showInMainMenu="true" showInEditor="true" showInProject="true" showInSearchPopup="true" disabled="false" useConsole="true" showConsoleOnStdOut="true" showConsoleOnStdErr="true" synchronizeAfterRun="true">
+        <exec>
+          <option name="COMMAND" value="$ProjectFileDir$/linescript.cmd" />
+          <option name="PARAMETERS" value="$FilePath$ -O4 --cc clang" />
+          <option name="WORKING_DIRECTORY" value="$ProjectFileDir$" />
+        </exec>
+      </tool>
+      <tool name="LineScript Check Current File" description="" showInMainMenu="true" showInEditor="true" showInProject="true" showInSearchPopup="true" disabled="false" useConsole="true" showConsoleOnStdOut="true" showConsoleOnStdErr="true" synchronizeAfterRun="true">
+        <exec>
+          <option name="COMMAND" value="$ProjectFileDir$/linescript.cmd" />
+          <option name="PARAMETERS" value="$FilePath$ --check" />
+          <option name="WORKING_DIRECTORY" value="$ProjectFileDir$" />
+        </exec>
+      </tool>
+    </toolSet>
+  </component>
+</application>

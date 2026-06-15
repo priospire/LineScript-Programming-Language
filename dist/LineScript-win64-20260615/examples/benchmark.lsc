@@ -1,0 +1,25 @@
+mix(x: i64) -> i64 do
+  declare const v = x * 1664525 + 1013904223
+  return (v % 2147483647) + (v / 3)
+end
+
+kernel(n: i64) -> i64 do
+  declare acc: i64 = 0
+  for i in 0..n do
+    acc = acc + mix(i)
+  end
+  return acc
+end
+
+main() -> i64 do
+  declare t0 = clock_us()
+  declare result = kernel(50000000)
+  declare t1 = clock_us()
+  declare elapsed_us = t1 - t0
+  declare elapsed_ms = elapsed_us / 1000
+
+  println(result)
+  println(elapsed_us)
+  println(elapsed_ms)
+  return 0
+end

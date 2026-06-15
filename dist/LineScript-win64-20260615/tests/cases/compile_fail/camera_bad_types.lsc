@@ -1,0 +1,4 @@
+main() -> i64 do
+  camera_bind("0")
+  return 0
+end

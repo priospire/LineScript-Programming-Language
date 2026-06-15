@@ -1,0 +1,4 @@
+main() -> i64 do
+  let x = 1
+  return x
+end

@@ -1,0 +1,6 @@
+main() -> i64 do
+  .format()
+  declare name = input()
+  println(name)
+  return 0
+end

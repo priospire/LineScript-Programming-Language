@@ -1,0 +1,9 @@
+main() -> i64 do
+  declare sum: i64 = 0
+  for i in 0..10000 do
+    sum = sum + i
+  end
+  println(sum)
+  .stateSpeed()
+  return 0
+end

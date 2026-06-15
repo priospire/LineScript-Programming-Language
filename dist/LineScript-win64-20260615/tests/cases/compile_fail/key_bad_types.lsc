@@ -1,0 +1,4 @@
+main() -> i64 do
+  println(key_down("A"))
+  return 0
+end

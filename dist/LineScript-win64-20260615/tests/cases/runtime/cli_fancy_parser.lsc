@@ -1,0 +1,10 @@
+.format()
+
+println(cli_token_count())
+println(cli_has("-O"))
+println(cli_has("["))
+println(cli_has("--beta-features"))
+println(cli_has("--not-strict"))
+println(cli_value("-p"))
+println(cli_value("-i"))
+println(cli_value("--profile"))

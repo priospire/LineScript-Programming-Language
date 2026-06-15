@@ -1,0 +1,17 @@
+main() -> i64 do
+  declare name = input("name: ")
+  declare arr = array_new()
+  array_push(arr, name)
+  array_set(arr, 1, "guest")
+  println(array_get(arr, 0))
+  println(array_get(arr, 1))
+
+  declare d = dict_new()
+  dict_set(d, "name", name)
+  dict_set(d, "role", array_get(arr, 1))
+  println(dict_get(d, "name"))
+  println(dict_get(d, "role"))
+  println(dict_has(d, "name"))
+  println(dict_len(d))
+  return 0
+end

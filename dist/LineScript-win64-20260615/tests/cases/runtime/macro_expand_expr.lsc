@@ -1,0 +1,9 @@
+macro add1(x: expr) -> expr do
+  x + 1
+end
+
+main() -> i64 do
+  declare a: i64 = 41
+  println(expand(add1(a)))
+  return 0
+end

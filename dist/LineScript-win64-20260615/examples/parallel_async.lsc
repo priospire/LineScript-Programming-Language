@@ -1,0 +1,21 @@
+worker() -> void do
+  println("worker finished")
+end
+
+main() -> i64 do
+  declare t0 = clock_us()
+  declare task = spawn(worker())
+
+  parallel for i in 0..2000000 do
+    declare square = i * i
+    if square < 0 do
+      println(square)
+    end
+  end
+
+  await(task)
+  declare t1 = clock_us()
+  print("elapsed_us=")
+  println(formatOutput(t1 - t0))
+  return 0
+end

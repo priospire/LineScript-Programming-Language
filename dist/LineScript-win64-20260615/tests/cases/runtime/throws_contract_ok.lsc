@@ -1,0 +1,12 @@
+worker() -> i64 throws IOError do
+  return 7
+end
+
+caller() -> i64 throws IOError do
+  return worker()
+end
+
+main() -> i64 throws IOError do
+  println(caller())
+  return 0
+end

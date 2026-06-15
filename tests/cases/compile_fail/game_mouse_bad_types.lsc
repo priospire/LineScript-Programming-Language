@@ -1,0 +1,4 @@
+main() -> i64 do
+  println(game_mouse_x("bad"))
+  return 0
+end

@@ -1,0 +1,12 @@
+.linescript/
+build/
+tests/artifacts/
+tests/artifacts_*/
+vscode-extension/linescript-vscode/node_modules/
+*.obj
+*.pdb
+*.ilk
+*.tmp
+tests/artifacts*_runs.txt
+tests/*_after*.c
+tests/stress/vector_report*.log

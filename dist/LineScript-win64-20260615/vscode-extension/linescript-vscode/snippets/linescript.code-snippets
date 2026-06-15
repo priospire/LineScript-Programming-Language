@@ -1,0 +1,127 @@
+{
+  "Main Function": {
+    "prefix": "main",
+    "body": [
+      "main() -> i64 do",
+      "  ${0:return 0}",
+      "end"
+    ],
+    "description": "Create a main function."
+  },
+  "Function": {
+    "prefix": "fn",
+    "body": [
+      "${1:name}(${2}) -> ${3:i64} do",
+      "  ${0:return 0}",
+      "end"
+    ],
+    "description": "Create a LineScript function."
+  },
+  "If Block": {
+    "prefix": "if",
+    "body": [
+      "if ${1:condition} do",
+      "  ${0}",
+      "end"
+    ],
+    "description": "If block."
+  },
+  "If Elif Else": {
+    "prefix": "ifelse",
+    "body": [
+      "if ${1:condition} do",
+      "  ${2}",
+      "elif ${3:other_condition} do",
+      "  ${4}",
+      "else do",
+      "  ${5}",
+      "end"
+    ],
+    "description": "If/elif/else block."
+  },
+  "For Range": {
+    "prefix": "for",
+    "body": [
+      "for ${1:i} in ${2:0}..${3:n} do",
+      "  ${0}",
+      "end"
+    ],
+    "description": "Range for loop."
+  },
+  "Parallel For": {
+    "prefix": "pfor",
+    "body": [
+      "parallel for ${1:i} in ${2:0}..${3:n} do",
+      "  ${0}",
+      "end"
+    ],
+    "description": "Parallel for loop."
+  },
+  "While": {
+    "prefix": "while",
+    "body": [
+      "while ${1:condition} do",
+      "  ${0}",
+      "end"
+    ],
+    "description": "While loop."
+  },
+  "Class": {
+    "prefix": "class",
+    "body": [
+      "class ${1:Name} do",
+      "  declare ${2:value}: i64 = 0",
+      "",
+      "  constructor() -> void do",
+      "    this.${2:value} = 0",
+      "  end",
+      "",
+      "  getValue() -> i64 do",
+      "    return this.${2:value}",
+      "  end",
+      "end"
+    ],
+    "description": "C++-style class template."
+  },
+  "Custom Flag Function": {
+    "prefix": "flag",
+    "body": [
+      "flag ${1:hello-world}() do",
+      "  ${0:println(\"flag triggered\")}",
+      "end"
+    ],
+    "description": "Define a custom CLI flag handler."
+  },
+  "Format Marker": {
+    "prefix": "format",
+    "body": [
+      ".format()"
+    ],
+    "description": "Enable clean run output marker."
+  },
+  "Superuser": {
+    "prefix": "superuser",
+    "body": [
+      "superuser()",
+      "su.trace.on()",
+      "${0}",
+      "su.trace.off()"
+    ],
+    "description": "Superuser diagnostics block."
+  },
+  "Game Loop": {
+    "prefix": "gameloop",
+    "body": [
+      "declare game = game_new(320, 180, \"LineScript\", true)",
+      "game_set_target_fps(game, 60)",
+      "while not game_should_close(game) do",
+      "  game_begin(game)",
+      "  game_clear(game, 18, 22, 30)",
+      "  ${0}",
+      "  game_end(game)",
+      "end",
+      "game_free(game)"
+    ],
+    "description": "Basic game loop skeleton."
+  }
+}

@@ -1,0 +1,9 @@
+main() -> i64 do
+  declare a
+  declare b: f64
+  declare c: bool
+  println(a)
+  println(b)
+  println(c)
+  return 0
+end

@@ -1,0 +1,4 @@
+main() -> i64 do
+  game_set_fullscreen("bad", true)
+  return 0
+end

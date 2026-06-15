@@ -1,0 +1,5 @@
+sudo() {
+  print("milk")
+}
+
+sudo()

@@ -1,0 +1,17 @@
+class Box do
+  declare v: i64 = 0
+
+  fn constructor(seed: i64) do
+    this.v = seed
+  end
+
+  public fn operator unary -() -> i64 do
+    return this.v + 1000
+  end
+end
+
+main() -> i64 do
+  declare b: Box = Box(7)
+  println(-b)
+  return 0
+end

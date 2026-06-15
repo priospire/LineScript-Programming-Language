@@ -1,0 +1,5 @@
+main() -> i64 do
+  declare p: ptr<weird_t> = mem_alloc(8)
+  println(p)
+  return 0
+end

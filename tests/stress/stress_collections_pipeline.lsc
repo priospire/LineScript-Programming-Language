@@ -1,0 +1,23 @@
+main() -> i64 do
+  declare arr = array_new()
+  for i in 0..20000 do
+    array_push(arr, formatOutput(i))
+  end
+
+  declare d = dict_new()
+  for i in 0..20000 do
+    declare key = array_get(arr, i)
+    dict_set(d, key, key)
+  end
+
+  declare sum: i64 = 0
+  for i in 0..20000 do
+    declare key = formatOutput(i)
+    if dict_has(d, key) do
+      sum = sum + parse_i64(dict_get(d, key))
+    end
+  end
+
+  println(sum)
+  return 0
+end

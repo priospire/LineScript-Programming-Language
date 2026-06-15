@@ -1,0 +1,10 @@
+main() -> i64 do
+  declare sum: i64 = 0
+  for i in 0..700 do
+    for j in 0..700 do
+      sum = sum + ((i * 13) + (j * 17) - (i * 3) + (j * 5))
+    end
+  end
+  println(sum)
+  return 0
+end

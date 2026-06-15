@@ -1,0 +1,5 @@
+main() -> i64 do
+  declare bad = bitmap_new("wide", 16)
+  println(bad)
+  return 0
+end

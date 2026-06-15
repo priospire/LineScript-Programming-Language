@@ -1,0 +1,8 @@
+factory() -> i64 do
+  declare owned arr = array_new()
+  return arr
+end
+
+main() -> i64 do
+  return factory()
+end

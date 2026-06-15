@@ -1,0 +1,8 @@
+main() -> i64 do
+  declare x = 1
+  x++
+  x++
+  x--
+  println(x)
+  return 0
+end

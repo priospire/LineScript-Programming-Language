@@ -1,0 +1,27 @@
+main() -> i64 do
+  declare g = pg_init(16, 16, "pg", false)
+  println(g >= 0)
+  pg_set_target_fps(g, 0)
+  pg_set_fixed_dt(g, 0.02)
+  pg_begin(g)
+  pg_clear(g, 0, 0, 0)
+  pg_draw_rect(g, 1, 1, 4, 3, 255, 0, 0, true)
+  pg_draw_line(g, 0, 0, 15, 15, 0, 255, 0)
+
+  declare s = pg_surface_new(2, 2)
+  pg_surface_clear(s, 0, 0, 0)
+  pg_surface_set(s, 0, 0, 255, 255, 255)
+  pg_surface_set(s, 1, 0, 255, 255, 255)
+  pg_surface_set(s, 0, 1, 255, 255, 255)
+  pg_surface_set(s, 1, 1, 255, 255, 255)
+  pg_blit(g, s, 4, 4)
+  pg_surface_free(s)
+
+  println(pg_get_pixel(g, 0, 0))
+  println(pg_checksum(g))
+  pg_end(g)
+  println(pg_frame(g))
+  println(pg_should_quit(g))
+  pg_quit(g)
+  return 0
+end

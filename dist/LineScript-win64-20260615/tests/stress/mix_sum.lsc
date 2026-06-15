@@ -1,0 +1,14 @@
+main() -> i64 do
+  declare a: i64 = 0
+  declare b: i64 = 1
+  declare c: i64 = 2
+  declare d: i64 = 3
+  for i in 0..1200000 do
+    a = a + i
+    b = b + ((i * 3) + 1)
+    c = c + ((i * 5) - 7)
+    d = d + ((i * i) + 11)
+  end
+  println(a + b + c + d)
+  return 0
+end

@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "LineScript: Run Current File",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": ".\\linescript.cmd \"${file}\" --max-speed --cc clang"
+    },
+    {
+      "name": "LineScript: Check Current File",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": ".\\linescript.cmd \"${file}\" --check"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+superuser()
+superuser.trace.off()
+
+declare caps = superuser.capabilities()
+println(contains(caps, "superuser=on"))
+
+superuser.limit.set(9000, 2048)
+declare mem = superuser.memory.inspect()
+println(contains(mem, "mem_limit=2048"))
+
+declare inspect = superuser.compiler.inspect()
+println(contains(inspect, "backend="))
+
+superuser.debug.hook("alias")
+println(1)

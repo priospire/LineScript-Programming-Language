@@ -1,0 +1,56 @@
+worker() -> void do
+  declare acc: i64 = 0
+  for i in 0..4000 do
+    acc = acc + (i * 3 + 1)
+  end
+  if acc < 0 do
+    println(acc)
+  end
+end
+
+main() -> i64 do
+  declare failures: i64 = 0
+  declare launched: i64 = 0
+
+  for round in 0..400 do
+    declare t0 = spawn(worker())
+    declare t1 = spawn(worker())
+    declare t2 = spawn(worker())
+    declare t3 = spawn(worker())
+    declare t4 = spawn(worker())
+    declare t5 = spawn(worker())
+    declare t6 = spawn(worker())
+    declare t7 = spawn(worker())
+    declare t8 = spawn(worker())
+    declare t9 = spawn(worker())
+    declare t10 = spawn(worker())
+    declare t11 = spawn(worker())
+    declare t12 = spawn(worker())
+    declare t13 = spawn(worker())
+    declare t14 = spawn(worker())
+    declare t15 = spawn(worker())
+
+    if t0 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t1 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t2 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t3 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t4 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t5 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t6 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t7 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t8 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t9 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t10 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t11 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t12 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t13 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t14 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+    if t15 >= 0 do launched = launched + 1 else do failures = failures + 1 end
+
+    await_all()
+  end
+
+  println(failures)
+  println(launched)
+  return 0
+end

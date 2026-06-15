@@ -1,0 +1,5 @@
+main() -> i64 do
+  declare x = input_i64("a", "b")
+  println(x)
+  return 0
+end

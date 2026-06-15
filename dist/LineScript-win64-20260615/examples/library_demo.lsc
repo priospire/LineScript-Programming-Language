@@ -1,0 +1,14 @@
+main() -> i64 do
+  println(ls_math_square_i64(7))
+  println(ls_text_repeat3("ha"))
+
+  declare arr = ls_array3("a", "b", "c")
+  println(array_len(arr))
+  println(ls_array_push_if_missing(arr, "d"))
+  array_free(arr)
+
+  declare game = ls_game_headless(24, 12, "library-demo")
+  println(game_width(game))
+  game_free(game)
+  return 0
+end

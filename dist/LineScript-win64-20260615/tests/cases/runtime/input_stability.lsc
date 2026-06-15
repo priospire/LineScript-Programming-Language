@@ -1,0 +1,7 @@
+main() -> i64 do
+  declare first = input()
+  declare second = input()
+  println(first)
+  println(second)
+  return 0
+end

@@ -1,0 +1,9 @@
+main() -> i64 do
+  declare arr = array_new()
+  array_set(arr, 0, input())
+
+  declare d = dict_new()
+  dict_set(d, "first", array_get(arr, 0))
+  println(dict_get(d, "first"))
+  return 0
+end

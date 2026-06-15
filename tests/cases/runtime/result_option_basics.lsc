@@ -1,0 +1,23 @@
+main() -> i64 do
+  declare o1 = option_some("hello")
+  declare o2 = option_none()
+  println(option_is_some(o1))
+  println(option_is_none(o2))
+  println(option_unwrap(o1))
+  println(option_unwrap_or(o2, "fallback"))
+
+  declare r1 = result_ok("ok")
+  declare r2 = result_err("IOError", "missing")
+  println(result_is_ok(r1))
+  println(result_is_err(r2))
+  println(result_value(r1))
+  println(result_error_type(r2))
+  println(result_error_message(r2))
+  println(result_unwrap_or(r2, "default"))
+
+  option_free(o1)
+  option_free(o2)
+  result_free(r1)
+  result_free(r2)
+  return 0
+end

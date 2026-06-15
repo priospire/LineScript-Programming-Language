@@ -1,0 +1,22 @@
+main() -> i64 do
+  println(game_width(-1))
+  println(game_height(-1))
+  println(game_should_close(-1))
+  println(game_get(-1, 0, 0))
+  println(game_checksum(-1))
+  println(game_save_ppm(-1, "x.ppm"))
+
+  declare bad = game_new(0, 10, "bad", false)
+  println(bad)
+
+  declare g = game_new(8, 8, "ok", false)
+  game_set_fixed_dt(g, -1.0)
+  game_set_target_fps(g, -50)
+  game_begin(g)
+  game_clear(g, 1, 2, 3)
+  game_end(g)
+  println(game_frame(g))
+  println(game_get(g, 0, 0))
+  game_free(g)
+  return 0
+end

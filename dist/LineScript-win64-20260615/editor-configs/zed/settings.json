@@ -1,0 +1,25 @@
+{
+  "languages": {
+    "LineScript": {
+      "file_types": ["lsc", "ls"],
+      "language_servers": ["linescript-lsp"]
+    }
+  },
+  "lsp": {
+    "linescript-lsp": {
+      "binary": {
+        "path": "node",
+        "arguments": ["vscode-extension/linescript-vscode/server/server.js"]
+      },
+      "settings": {
+        "linescript.lscPath": "lsc.exe",
+        "linescript.backendCompiler": "clang",
+        "linescript.checkOnType": true,
+        "linescript.checkOnSave": true,
+        "linescript.checkTimeoutMs": 8000,
+        "linescript.hintsEnabled": true,
+        "linescript.maxHintsPerFile": 120
+      }
+    }
+  }
+}

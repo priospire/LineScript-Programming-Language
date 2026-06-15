@@ -1,0 +1,5 @@
+main() -> i64 do
+  declare x = input(1, 2)
+  println(x)
+  return 0
+end

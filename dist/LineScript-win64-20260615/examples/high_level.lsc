@@ -1,0 +1,22 @@
+sum_to(n: i64) -> i64 do
+  declare total: i64 = 0
+  for i in 0..n do
+    total = total + i
+  end
+  return total
+end
+
+main() -> i64 do
+  declare const n: i64 = 1000000
+  declare t0 = clock_ms()
+  declare s = sum_to(n)
+  declare t1 = clock_ms()
+
+  println(s)
+  println(t1 - t0)
+
+  if (s > 0) and true do
+    return 0
+  end
+  return 1
+end

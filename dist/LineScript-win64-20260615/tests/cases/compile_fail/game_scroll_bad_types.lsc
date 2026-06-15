@@ -1,0 +1,4 @@
+main() -> i64 do
+  println(game_scroll_x("bad"))
+  return 0
+end

@@ -1,0 +1,9 @@
+main() -> i64 do
+  declare n: i64 = 10000000
+  declare sum: i64 = 0
+  for i in 0..n do
+    sum = sum + i
+  end
+  println(sum)
+  return 0
+end

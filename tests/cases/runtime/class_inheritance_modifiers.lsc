@@ -1,0 +1,39 @@
+class Base do
+  declare x: i64 = 0
+
+  public fn constructor(seed: i64) do
+    this.x = seed
+  end
+
+  public virtual fn value() -> i64 do
+    return this.x
+  end
+
+  public static fn scale(v: i64) -> i64 do
+    return v * 2
+  end
+end
+
+class Derived extends Base do
+  declare y: i64 = 0
+
+  public fn constructor(a: i64, b: i64) : Base(a) do
+    this.y = b
+  end
+
+  public override fn value() -> i64 do
+    return this.x + this.y
+  end
+
+  public final fn only() -> i64 do
+    return this.y
+  end
+end
+
+main() -> i64 do
+  declare d: Derived = Derived(7, 5)
+  println(d.value())
+  println(Derived.scale(3))
+  println(d.only())
+  return 0
+end

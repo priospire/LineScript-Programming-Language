@@ -1,0 +1,12 @@
+is_even(n: i64) -> bool {
+  return n % 2 == 0;
+}
+
+main() -> i64 {
+  if is_even(8) {
+    println(1);
+  } else {
+    println(0);
+  }
+  return 0;
+}

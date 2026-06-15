@@ -1,0 +1,7 @@
+main() -> i64 do
+  task_set_worker_count("many")
+  declare g = game_new(16, 16, "bad", false)
+  game_set_window_mode(g, 42)
+  renderer_set_hardware_acceleration("yes")
+  return 0
+end

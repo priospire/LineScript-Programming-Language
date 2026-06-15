@@ -1,0 +1,18 @@
+main() -> i64 do
+  declare const x: i64 = 42
+  declare const y: f64 = 3.14159
+  declare const z: bool = x > 10
+  declare const label: str = "x"
+
+  print("literal x => ")
+  println("x")
+  print("variable x => ")
+  println(x)
+  print("label variable => ")
+  println(label)
+  print("label length => ")
+  println(len(label))
+  println(y)
+  println(z)
+  return 0
+end

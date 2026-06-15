@@ -1,0 +1,9 @@
+worker() -> i64 do
+  return 1
+end
+
+main() -> i64 do
+  declare t = spawn(worker())
+  await(t)
+  return 0
+end

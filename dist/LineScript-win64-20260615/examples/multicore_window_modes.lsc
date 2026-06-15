@@ -1,0 +1,32 @@
+main() -> i64 do
+  println("hardware threads:")
+  println(task_hardware_threads())
+
+  task_set_hyperthreading(true)
+  task_set_worker_count(0) // automatic worker count
+  println("workers:")
+  println(task_worker_count())
+
+  renderer_select_accelerated("opengl")
+  println(renderer_backend())
+  println(renderer_is_accelerated())
+
+  declare game = game_new(320, 180, "LineScript Modes", true)
+  game_set_window_mode(game, "windowed_fullscreen")
+  game_set_interpolation(game, true)
+  game_set_interpolation_alpha(game, 0.5)
+
+  for frame in 0..120 do
+    if game_should_close(game) do
+      break
+    end
+    game_begin(game)
+    game_clear(game, 18, 22, 30)
+    game_text(game, 12, 12, game_window_mode(game), 240, 245, 255)
+    game_rect(game, 40, 60, 80, 40, 255, 170, 40, true)
+    game_end(game)
+  end
+
+  game_free(game)
+  return 0
+end
