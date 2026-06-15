@@ -8,7 +8,7 @@ This file is the source-of-truth handoff context for this workspace.
 - Local workspace status: this folder is not a Git repository.
 - GitHub repository: `https://github.com/priospire/LineScript-Programming-Language`
 - Packaging entrypoint: `scripts/package.ps1`
-- Current release family: LineScript 1.5.1 "Velocity Update"
+- Current release family: LineScript 1.5.1c "Velocity Update"
 - Local RTK setup: `rtk 0.42.4` installed to `%USERPROFILE%\.local\bin`; local developer tooling initialized.
 
 ## Core Files
@@ -35,15 +35,16 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 ## Latest QA Snapshot
 
 - Compiler build: `clang++ -std=c++20 -O3 -Wall -Wextra -pedantic src\lsc.cpp -o lsc.exe` passed.
-- Deterministic suite: `tests\run_tests.ps1 -FrontendCompiler clang++ -BackendCompiler clang` passed `250 / 250`.
-- Stress suite: `tests\run_stress_tests.ps1 -FrontendCompiler clang++ -BackendCompiler clang` passed `21 / 21`.
+- Targeted renderer backend test: `tests\cases\runtime\renderer_backend_targets.lsc` passed through the local compiler.
+- Version flag check: `lsc.exe --LineScript` reports `LineScript version 1.5.1c (Velocity update)`.
+- Deterministic suite: `tests\run_tests.ps1 -FrontendCompiler clang++ -BackendCompiler clang -OutputAssuranceRounds 1` passed `167 / 167`.
 - VSCode extension tests: `npm test` passed.
-- Dist smoke test: packaged `dist\LineScript-win64-20260615\lsc.exe` compiled and ran `tests\cases\runtime\multicore_window_rendering.lsc`; generated smoke executable was removed after verification.
+- Dist smoke test: packaged `dist\LineScript-win64-20260616\lsc.exe` compiled and ran `tests\cases\runtime\renderer_backend_targets.lsc`; generated smoke executable was removed after verification.
 
 ## Latest Dist
 
-- Package directory: `dist\LineScript-win64-20260615`
-- Package zip: `dist\LineScript-win64-20260615.zip`
+- Package directory: `dist\LineScript-win64-20260616`
+- Package zip: `dist\LineScript-win64-20260616.zip`
 
 ## Current Architecture Notes
 
@@ -53,7 +54,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 - `spawn(...)`, `await(task)`, and `await_all()` use native OS threads.
 - Multicore worker controls are exposed through `task_hardware_threads`, `task_set_worker_count`, `task_worker_count`, `task_set_hyperthreading`, and `task_hyperthreading_enabled`.
 - Game/window rendering currently has a built-in software raster path, Win32 visible windows, and headless deterministic rendering.
-- Renderer selectors accept `software`, `opengl`/`gl`, and `vulkan`/`vk`; compatibility and hardware-acceleration preferences are exposed in the API even when the built-in deterministic path remains software.
+- Renderer selectors accept `software`, `opengl`/`gl`, `vulkan`/`vk`, DirectX 11 aliases, and DirectX 12 aliases; compatibility and hardware-acceleration preferences are exposed in the API even when the built-in deterministic path remains software.
 - Game windows expose `windowed`, `fullscreen`, and `windowed_fullscreen` mode selectors plus optional frame-time interpolation.
 
 ## Release And GitHub Workflow

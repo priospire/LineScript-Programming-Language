@@ -3,7 +3,7 @@
 LineScript is a speed-first compiled language with high-level syntax.
 
 Current release:
-- LineScript 1.5.1, "Velocity Update"
+- LineScript 1.5.1c, "Velocity Update"
 
 Official GitHub repository:
 - https://github.com/priospire/LineScript-Programming-Language
@@ -451,7 +451,7 @@ bitmap_free(bitmap)
 gfx_free(canvas)
 ```
 
-Bitmap loading supports PPM (`P3`/`P6`) and uncompressed BMP (`24/32-bit`). Renderer backend names currently accepted are `software`, `opengl`, and `vulkan`; OpenGL/Vulkan are compatibility targets until a native accelerated backend is linked.
+Bitmap loading supports PPM (`P3`/`P6`) and uncompressed BMP (`24/32-bit`). Renderer backend names currently accepted are `software`, `opengl`, `vulkan`, `directx11`, and `directx12`; OpenGL, Vulkan, and DirectX are compatibility targets until a native accelerated backend is linked.
 
 Pygame-like aliases:
 

@@ -67,7 +67,7 @@ Functions:
 - `ls_game_backend_ready(name: str) -> bool`
 
 `ls_game_toggle_fullscreen` uses the native fullscreen API on Windows visible windows and safely no-ops in headless mode.
-Renderer backend helpers accept `software`, `opengl`, and `vulkan`; hardware acceleration depends on whether a native backend has been linked for that platform.
+Renderer backend helpers accept `software`, `opengl`, `vulkan`, `directx11`, and `directx12`; hardware acceleration depends on whether a native backend has been linked for that platform.
 
 ## Window Pack
 

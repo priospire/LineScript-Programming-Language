@@ -357,10 +357,10 @@ Notes:
 - `bitmap_load` supports binary/text PPM (`P6`/`P3`) and uncompressed 24/32-bit BMP.
 - `gfx_draw_bitmap` clips blits automatically; off-screen pixels are ignored safely.
 - `gfx_text` draws a built-in 5x7 raster font for fast debug overlays, UI labels, and HUD text.
-- `renderer_set_backend` accepts `software`, `opengl`/`gl`, and `vulkan`/`vk`.
-- `renderer_select_accelerated("opengl")` or `renderer_select_accelerated("vulkan")` selects an accelerated backend preference and enables the acceleration request flag.
+- `renderer_set_backend` accepts `software`, `opengl`/`gl`, `vulkan`/`vk`, `directx11`/`dx11`/`d3d11`/`direct3d11`, and `directx12`/`dx12`/`d3d12`/`direct3d12`.
+- `renderer_select_accelerated("opengl")`, `renderer_select_accelerated("vulkan")`, `renderer_select_accelerated("directx11")`, or `renderer_select_accelerated("directx12")` selects an accelerated backend preference and enables the acceleration request flag.
 - `renderer_set_hardware_acceleration(false)` keeps the selected backend name but reports `renderer_is_accelerated() == false`.
-- current OpenGL/Vulkan support is a compatibility/capability selection path; the built-in renderer remains deterministic software unless a native accelerated backend is linked later.
+- current OpenGL, Vulkan, and DirectX support is a compatibility/capability selection path; the built-in renderer remains deterministic software unless a native accelerated backend is linked later.
 
 Example:
 

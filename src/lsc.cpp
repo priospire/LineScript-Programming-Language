@@ -8664,10 +8664,21 @@ private:
     o_ << "  if (ls_cstr_ieq(name, \"software\") || ls_cstr_ieq(name, \"raster\") || ls_cstr_ieq(name, \"cpu\")) return 0;\n";
     o_ << "  if (ls_cstr_ieq(name, \"opengl\") || ls_cstr_ieq(name, \"gl\")) return 1;\n";
     o_ << "  if (ls_cstr_ieq(name, \"vulkan\") || ls_cstr_ieq(name, \"vk\")) return 2;\n";
+    o_ << "  if (ls_cstr_ieq(name, \"directx11\") || ls_cstr_ieq(name, \"directx_11\") || ls_cstr_ieq(name, \"dx11\") || ls_cstr_ieq(name, \"d3d11\") || ls_cstr_ieq(name, \"d3d_11\") || ls_cstr_ieq(name, \"direct3d11\")) return 3;\n";
+    o_ << "  if (ls_cstr_ieq(name, \"directx\") || ls_cstr_ieq(name, \"direct3d\") || ls_cstr_ieq(name, \"d3d\") || ls_cstr_ieq(name, \"directx12\") || ls_cstr_ieq(name, \"directx_12\") || ls_cstr_ieq(name, \"dx12\") || ls_cstr_ieq(name, \"d3d12\") || ls_cstr_ieq(name, \"d3d_12\") || ls_cstr_ieq(name, \"direct3d12\")) return 4;\n";
     o_ << "  return -1;\n";
     o_ << "}\n";
+    o_ << "static inline const char *ls_renderer_name_from_code(int code) {\n";
+    o_ << "  switch (code) {\n";
+    o_ << "    case 1: return \"opengl\";\n";
+    o_ << "    case 2: return \"vulkan\";\n";
+    o_ << "    case 3: return \"directx11\";\n";
+    o_ << "    case 4: return \"directx12\";\n";
+    o_ << "    default: return \"software\";\n";
+    o_ << "  }\n";
+    o_ << "}\n";
     o_ << "static inline ls_bool renderer_set_backend(const char *name) { int c = ls_renderer_code_from_name(name); if (c < 0) return 0; ls_renderer_backend_code = c; return 1; }\n";
-    o_ << "static inline const char *renderer_backend(void) { return ls_renderer_backend_code == 1 ? \"opengl\" : (ls_renderer_backend_code == 2 ? \"vulkan\" : \"software\"); }\n";
+    o_ << "static inline const char *renderer_backend(void) { return ls_renderer_name_from_code(ls_renderer_backend_code); }\n";
     o_ << "static inline ls_bool renderer_supports(const char *name) { return ls_renderer_code_from_name(name) >= 0 ? 1 : 0; }\n";
     o_ << "static inline ls_bool renderer_set_hardware_acceleration(ls_bool enabled) { ls_renderer_hardware_requested = enabled ? 1 : 0; return 1; }\n";
     o_ << "static inline ls_bool renderer_hardware_acceleration_enabled(void) { return ls_renderer_hardware_requested ? 1 : 0; }\n";
@@ -11550,12 +11561,14 @@ struct Opt {
 static constexpr int kLineScriptVerMajor = 1;
 static constexpr int kLineScriptVerMinor = 5;
 static constexpr int kLineScriptVerPatchBase = 0;
-static constexpr int kLineScriptVerHalfSteps = 2;  // Velocity Update: displayed 1.5.1
+static constexpr int kLineScriptVerHalfSteps = 2;  // Velocity Update: displayed 1.5.1c
+static constexpr const char *kLineScriptVerSuffix = "c";
 static constexpr const char *kLineScriptCodename = "Velocity";
 
 static std::string lineScriptVersionDisplay() {
   const int patch = kLineScriptVerPatchBase + (kLineScriptVerHalfSteps / 2);
-  return std::to_string(kLineScriptVerMajor) + "." + std::to_string(kLineScriptVerMinor) + "." + std::to_string(patch);
+  return std::to_string(kLineScriptVerMajor) + "." + std::to_string(kLineScriptVerMinor) + "." +
+         std::to_string(patch) + kLineScriptVerSuffix;
 }
 
 static bool isKnownInfoFlagBody(const std::string &body) {

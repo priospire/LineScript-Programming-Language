@@ -1,6 +1,6 @@
 # LineScript API Reference (Complete)
 
-This is the exhaustive API reference for LineScript 1.5.1, the Velocity Update.
+This is the exhaustive API reference for LineScript 1.5.1c, the Velocity Update.
 
 Scope covered in this file:
 - key detection and input polling APIs
@@ -403,7 +403,7 @@ renderer_select_accelerated(preferred: str) -> bool
 renderer_is_accelerated() -> bool
 ```
 
-- Backend names: `software`, `raster`, `cpu`, `opengl`, `gl`, `vulkan`, `vk`.
+- Backend names: `software`, `raster`, `cpu`, `opengl`, `gl`, `vulkan`, `vk`, `directx11`, `directx_11`, `dx11`, `d3d11`, `d3d_11`, `direct3d11`, `directx12`, `directx_12`, `dx12`, `d3d12`, `d3d_12`, `direct3d12`, `directx`, `direct3d`, and `d3d`.
 - `renderer_select_accelerated` rejects software backends and enables the acceleration request flag.
 - `renderer_is_accelerated` reports the selected accelerated preference, not a guaranteed GPU draw path.
 

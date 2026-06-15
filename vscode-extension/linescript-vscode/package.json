@@ -2,7 +2,7 @@
   "name": "linescript-vscode",
   "displayName": "LineScript",
   "description": "Language support for LineScript (.lsc, .ls): syntax highlight, snippets, diagnostics, suggestions, and LSP features.",
-  "version": "1.5.1",
+  "version": "1.5.1-c.0",
   "publisher": "linescript",
   "license": "MIT",
   "engines": {

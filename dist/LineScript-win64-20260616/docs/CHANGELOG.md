@@ -1,5 +1,20 @@
 # LineScript Changelog
 
+## 2026-06-16 (LineScript 1.5.1c, Velocity Update)
+
+### Added
+- renderer backend target support for DirectX 11 and DirectX 12 aliases:
+- `directx11`, `dx11`, `d3d11`, `direct3d11`
+- `directx12`, `dx12`, `d3d12`, `direct3d12`
+- generic `directx`/`d3d` aliases that select the DirectX 12 target.
+- runtime coverage in `tests/cases/runtime/renderer_backend_targets.lsc`.
+- example coverage in `examples/renderer_backend_targets.lsc`.
+
+### Changed
+- `--LineScript` now reports `LineScript version 1.5.1c (Velocity update)`.
+- renderer documentation now covers OpenGL, Vulkan, DirectX 11, and DirectX 12 target selection.
+- DirectX targets are documented as backend-selection compatibility targets; the deterministic built-in draw path remains software unless a native accelerated backend is linked.
+
 ## 2026-06-15 (LineScript 1.5.1, Velocity Update)
 
 ### Added
@@ -35,9 +50,6 @@
 - headless game handles now preserve requested window mode for deterministic tests without opening native windows.
 - editor completion, syntax highlighting, and arity hints now recognize the new task/render/window/interpolation APIs.
 - README, syntax guide, language guide, stdlib reference, and API reference now document the new APIs.
-
-### Tooling
-- installed `rtk 0.42.4` locally and initialized local developer tooling.
 
 ## 2026-06-15 (Game/UI Rendering Pass)
 

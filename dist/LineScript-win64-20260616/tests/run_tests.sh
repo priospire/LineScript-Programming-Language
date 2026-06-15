@@ -171,6 +171,7 @@ runtime_tests=(
   "http_server_client_roundtrip|tests/cases/runtime/http_server_client_roundtrip.lsc|true\\ntrue||0"
   "game_headless_basic|tests/cases/runtime/game_headless_basic.lsc|1\\n16\\n16\\n10\\n65280\\n255\\n16777215\\n2446448900070348069\\n1\\nfalse||0"
   "bitmap_text_renderer|tests/cases/runtime/bitmap_text_renderer.lsc|4\\n3\\n660510\\ntrue\\n4\\n660510\\n660510\\n12\\n660510\\n12\\nsoftware\\ntrue\\ntrue\\nvulkan\\nfalse||0"
+  "renderer_backend_targets|tests/cases/runtime/renderer_backend_targets.lsc|true\\ntrue\\ntrue\\ntrue\\ntrue\\ntrue\\ntrue\\ntrue\\ndirectx11\\ntrue\\ndirectx12\\ntrue\\nfalse\\ndirectx12||0"
   "multicore_window_rendering|tests/cases/runtime/multicore_window_rendering.lsc|true\\ntrue\\nfalse\\n2\\ntrue\\nsoftware\\ntrue\\nopengl\\ntrue\\ntrue\\ntrue\\nfalse\\nwindowed\\ntrue\\nwindowed_fullscreen\\nfalse\\nfullscreen\\nwindowed\\ntrue\\n25\\n175\\nwindowed_fullscreen\\nfalse||0"
   "game_fullscreen_api|tests/cases/runtime/game_fullscreen_api.lsc|false\\nfalse\\nfalse\\nfalse\\nfalse||0"
   "game_scroll_mouse_inputs|tests/cases/runtime/game_scroll_mouse_inputs.lsc|0\\n0\\nfalse\\nfalse\\nfalse\\nfalse\\n0\\n0||0"
@@ -236,7 +237,7 @@ cli_info_tests=(
   "flag_what|--what|what? are you asking me?"
   "flag_hlep|--hlep|i think you made a little spelling mistake in your flag there"
   "flag_max_sped|--max-sped|hurga durga doo! max sped activated!"
-  "flag_linescript_version|--LineScript|LineScript version 1.5.1 (Velocity update)"
+  "flag_linescript_version|--LineScript|LineScript version 1.5.1c (Velocity update)"
   "flag_undefined_warning|tests/cases/runtime/custom_flag_script.lsc --run --cc $backend_compiler -o $artifact_dir/flag_undefined_warning${exe_suffix} --ghost|Warning: undefined flag '--ghost'"
   "flag_bad_warning|tests/cases/runtime/custom_flag_script.lsc --run --cc $backend_compiler -o $artifact_dir/flag_bad_warning${exe_suffix} ---bad|Warning: bad flag '---bad' ignored"
 )

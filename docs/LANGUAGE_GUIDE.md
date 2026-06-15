@@ -464,8 +464,8 @@ Notes:
 - `gfx_save_ppm` writes a `.ppm` image and returns `bool`
 - `bitmap_load` reads `P3`/`P6` PPM and uncompressed 24/32-bit BMP
 - `gfx_text` and `game_text` draw a built-in 5x7 font for labels, HUDs, and debug UI
-- `renderer_set_backend("opengl")` and `renderer_set_backend("vulkan")` are compatibility selectors; software rendering is the default built-in path today
-- `renderer_select_accelerated("opengl")` or `renderer_select_accelerated("vulkan")` records a hardware-acceleration preference for accelerated backends
+- `renderer_set_backend("opengl")`, `renderer_set_backend("vulkan")`, `renderer_set_backend("directx11")`, and `renderer_set_backend("directx12")` are compatibility selectors; software rendering is the default built-in path today
+- `renderer_select_accelerated("opengl")`, `renderer_select_accelerated("vulkan")`, `renderer_select_accelerated("directx11")`, or `renderer_select_accelerated("directx12")` records a hardware-acceleration preference for accelerated backends
 
 Physics + camera + input polling:
 

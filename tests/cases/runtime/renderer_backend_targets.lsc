@@ -1,0 +1,20 @@
+main() -> i64 do
+  println(renderer_supports("opengl"))
+  println(renderer_supports("vulkan"))
+  println(renderer_supports("directx11"))
+  println(renderer_supports("d3d11"))
+  println(renderer_supports("directx12"))
+  println(renderer_supports("d3d12"))
+  println(renderer_supports("directx"))
+
+  println(renderer_set_backend("dx11"))
+  println(renderer_backend())
+
+  println(renderer_select_accelerated("d3d12"))
+  println(renderer_backend())
+  println(renderer_is_accelerated())
+
+  println(renderer_set_backend("unknown"))
+  println(renderer_backend())
+  return 0
+end

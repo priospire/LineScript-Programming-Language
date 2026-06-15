@@ -641,7 +641,7 @@ Graphics notes:
 - `gfx_save_ppm` returns `bool`
 - `bitmap_load(path)` supports `P3`/`P6` PPM and uncompressed 24/32-bit BMP
 - `gfx_text`/`game_text` use a built-in 5x7 raster font for HUDs and debug UI
-- renderer names accepted today: `software`, `opengl`, `vulkan`; OpenGL/Vulkan are compatibility targets until a native accelerated backend is linked
+- renderer names accepted today: `software`, `opengl`, `vulkan`, `directx11`, and `directx12`; OpenGL, Vulkan, and DirectX are compatibility targets until a native accelerated backend is linked
 - `renderer_select_accelerated("opengl")` or `renderer_select_accelerated("vulkan")` records a hardware-acceleration preference
 
 ### Native Physics, Camera, and Input Polling
